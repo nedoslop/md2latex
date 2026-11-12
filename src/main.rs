@@ -13,7 +13,6 @@ use std::process::Command;
 #[command(name = "md2latex-gost")]
 #[command(about = "Конвертер Markdown -> LaTeX с оформлением по ГОСТ / СТУ")]
 struct Cli {
-    /// Путь к файлу конфигурации
     #[arg(short, long, default_value = "md2latex.toml")]
     config: PathBuf,
 }
@@ -30,9 +29,14 @@ fn main() -> Result<()> {
     let out_dir = PathBuf::from(&cfg.project.output_dir);
     fs::create_dir_all(&out_dir)?;
 
-    // Копируем изображения и переписываем относительные пути
-    let md_prepared = images::prepare_images(&md_content, &md_path, &out_dir)
-        .context("Ошибка при подготовке изображений")?;
+    let md_prepared = images::prepare_images(
+        &md_content,
+        &md_path,
+        &out_dir,
+        cfg.images.convert_to.as_deref(),
+        cfg.images.dpi,
+    )
+    .context("Ошибка при подготовке изображений")?;
 
     let body = markdown::markdown_to_latex(&md_prepared, &cfg)
         .context("Ошибка при преобразовании Markdown")?;

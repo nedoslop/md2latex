@@ -43,7 +43,7 @@
 
 \begin{tabular}[t]{@{}l@{}}
   Студент\\
-  {{ group }}{% if student_id | trim != "" %} / {{ student_id }}{% endif %}\\
+  группа {{ group }}{% if student_id | trim != "" %} / {{ student_id }}{% endif %}\\
   {\scriptsize номер группы, зачетной книжки}
 \end{tabular}
   & \begin{tabular}[t]{@{}c@{}}

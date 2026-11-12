@@ -10,6 +10,10 @@ pub struct Config {
     pub title: Title,
     #[serde(default)]
     pub bibliography: Bibliography,
+    #[serde(default)]
+    pub links: Links,
+    #[serde(default)]
+    pub images: Images,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,16 +71,89 @@ pub struct Style {
 
     #[serde(default = "default_figure_width")]
     pub default_figure_width: String,
+
+    #[serde(default = "default_main_font")]
+    pub main_font: String,
+
+    #[serde(default = "default_mono_font")]
+    pub mono_font: String,
+
+    #[serde(default = "default_caption_font_size")]
+    pub caption_font_size: String,
+
+    #[serde(default = "default_table_font_size")]
+    pub table_font_size: String,
+
+    #[serde(default = "default_section_align")]
+    pub section_align: String,
+
+    #[serde(default = "default_true")]
+    pub structural_heading_uppercase: bool,
+
+    #[serde(default = "default_section_before_skip")]
+    pub section_before_skip: String,
+
+    #[serde(default = "default_section_after_skip")]
+    pub section_after_skip: String,
+
+    #[serde(default = "default_subsection_before_skip")]
+    pub subsection_before_skip: String,
+
+    #[serde(default = "default_subsection_after_skip")]
+    pub subsection_after_skip: String,
 }
 
-fn default_font_fallback() -> String { "TeX Gyre Termes".into() }
-fn default_font_size() -> String { "14pt".into() }
-fn default_margin() -> String { "20mm".into() }
-fn default_paragraph_indent() -> String { "12.5mm".into() }
-fn default_line_spacing() -> String { "onehalf".into() }
-fn default_numbering() -> String { "within_section".into() }
-fn default_figure_width() -> String { "0.8".into() }
-fn default_true() -> bool { true }
+fn default_font_fallback() -> String {
+    "TeX Gyre Termes".into()
+}
+fn default_font_size() -> String {
+    "14pt".into()
+}
+fn default_margin() -> String {
+    "20mm".into()
+}
+fn default_paragraph_indent() -> String {
+    "12.5mm".into()
+}
+fn default_line_spacing() -> String {
+    "onehalf".into()
+}
+fn default_numbering() -> String {
+    "within_section".into()
+}
+fn default_figure_width() -> String {
+    "0.8".into()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_main_font() -> String {
+    "Times New Roman".into()
+}
+fn default_mono_font() -> String {
+    "Courier New".into()
+}
+fn default_caption_font_size() -> String {
+    "12pt".into()
+}
+fn default_table_font_size() -> String {
+    "12pt".into()
+}
+fn default_section_align() -> String {
+    "center".into()
+}
+fn default_section_before_skip() -> String {
+    "0pt".into()
+}
+fn default_section_after_skip() -> String {
+    "12pt".into()
+}
+fn default_subsection_before_skip() -> String {
+    "12pt".into()
+}
+fn default_subsection_after_skip() -> String {
+    "6pt".into()
+}
 
 impl Style {
     pub fn structural_list(&self) -> Vec<String> {
@@ -143,6 +220,69 @@ pub struct Title {
 pub struct Bibliography {
     #[serde(default)]
     pub use_biblatex: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Links {
+    #[serde(default = "default_true")]
+    pub colored: bool,
+    #[serde(default = "default_link_color")]
+    pub link_color: String,
+    #[serde(default = "default_cite_color")]
+    pub cite_color: String,
+    #[serde(default = "default_url_color")]
+    pub url_color: String,
+    #[serde(default = "default_false")]
+    pub boxed: bool,
+}
+
+fn default_link_color() -> String {
+    "black".into()
+}
+fn default_cite_color() -> String {
+    "black".into()
+}
+fn default_url_color() -> String {
+    "blue".into()
+}
+fn default_false() -> bool {
+    false
+}
+
+impl Default for Links {
+    fn default() -> Self {
+        Self {
+            colored: true,
+            link_color: "black".into(),
+            cite_color: "black".into(),
+            url_color: "blue".into(),
+            boxed: false,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Images {
+    #[serde(default = "default_true")]
+    pub interpolate: bool,
+    #[serde(default)]
+    pub convert_to: Option<String>,
+    #[serde(default = "default_dpi")]
+    pub dpi: u32,
+}
+
+fn default_dpi() -> u32 {
+    300
+}
+
+impl Default for Images {
+    fn default() -> Self {
+        Self {
+            interpolate: true,
+            convert_to: None,
+            dpi: 300,
+        }
+    }
 }
 
 impl Config {

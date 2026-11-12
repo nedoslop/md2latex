@@ -6,12 +6,12 @@
 \setotherlanguage{english}
 \usepackage{fontspec}
 
-\IfFontExistsTF{ {{- font | trim -}} }{
-  \setmainfont{ {{- font | trim -}} }
-  \newfontfamily\cyrillicfont{ {{- font | trim -}} }
-  \IfFontExistsTF{Courier New}{
-    \setmonofont{Courier New}
-    \newfontfamily\cyrillicfonttt{Courier New}
+\IfFontExistsTF{ {{- main_font | trim -}} }{
+  \setmainfont{ {{- main_font | trim -}} }
+  \newfontfamily\cyrillicfont{ {{- main_font | trim -}} }
+  \IfFontExistsTF{ {{- mono_font | trim -}} }{
+    \setmonofont{ {{- mono_font | trim -}} }
+    \newfontfamily\cyrillicfonttt{ {{- mono_font | trim -}} }
   }{
     \setmonofont{DejaVu Sans Mono}
     \newfontfamily\cyrillicfonttt{DejaVu Sans Mono}
@@ -55,19 +55,20 @@
 
 % ========== Подписи по СТУ 7.5-07 ==========
 \DeclareCaptionLabelSeparator{stu}{~\textendash~}
+\DeclareCaptionFont{captionfont}{\fontsize{ {{- caption_font_size | trim -}} }{ {{- caption_baseline | trim -}} }\selectfont}
 \captionsetup[figure]{
   labelsep=stu,
   justification=centering,
-  position={% if figure_caption_below %}below{% else %}above{% endif %},
+  position={% if figure_caption_below %}bottom{% else %}top{% endif %},
   singlelinecheck=false,
-  font={normalsize}
+  font=captionfont
 }
 \captionsetup[table]{
   labelsep=stu,
   justification=raggedright,
-  position={% if table_caption_above %}above{% else %}below{% endif %},
+  position={% if table_caption_above %}top{% else %}bottom{% endif %},
   singlelinecheck=false,
-  font={normalsize},
+  font=captionfont,
   skip=4pt
 }
 
@@ -105,10 +106,13 @@
 % ========== Ссылки ==========
 \usepackage{hyperref}
 \hypersetup{
-  colorlinks=true,
-  linkcolor=black,
-  citecolor=black,
-  urlcolor=black,
+  colorlinks={% if links_colored %}true{% else %}false{% endif %},
+  linkcolor={ {{- links_link_color | trim -}} },
+  citecolor={ {{- links_cite_color | trim -}} },
+  urlcolor={ {{- links_url_color | trim -}} },
+  filecolor={ {{- links_url_color | trim -}} },
+  linktoc=none,
+  pdfborder={% if links_boxed %}0 0 1{% else %}0 0 0{% endif %},
   pdftitle={ {{- topic | trim -}} },
   pdfauthor={ {{- student_author | trim -}} }
 }
@@ -135,32 +139,32 @@
 
 {% if section_bold %}
 \titleformat{\section}[block]
-  {\normalfont\bfseries\centering\MakeUppercase}
+  {\normalfont\bfseries\{{ section_align }}\MakeUppercase}
   {\thesection~}
   {0pt}
   {}
 {% else %}
 \titleformat{\section}[block]
-  {\normalfont\centering\MakeUppercase}
+  {\normalfont\{{ section_align }}\MakeUppercase}
   {\thesection~}
   {0pt}
   {}
 {% endif %}
-\titlespacing*{\section}{0pt}{0pt}{12pt}
+\titlespacing*{\section}{0pt}{ {{- section_before_skip | trim -}} }{ {{- section_after_skip | trim -}} }
 
 \titleformat{\subsection}[block]
   {\normalfont\bfseries\hspace{\parindent}}
   {\thesubsection~}
   {0pt}
   {}
-\titlespacing*{\subsection}{0pt}{12pt}{6pt}
+\titlespacing*{\subsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
 
 \titleformat{\subsubsection}[block]
   {\normalfont\bfseries\hspace{\parindent}}
   {\thesubsubsection~}
   {0pt}
   {}
-\titlespacing*{\subsubsection}{0pt}{12pt}{6pt}
+\titlespacing*{\subsubsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
 
 % ========== Названия ==========
 \addto\captionsrussian{
@@ -185,7 +189,6 @@
 
 {{ title_page }}
 
-% TOC должен быть на странице 2, тело — с 3
 \setcounter{page}{2}
 \clearpage
 \tableofcontents

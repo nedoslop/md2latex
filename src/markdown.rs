@@ -9,6 +9,7 @@ enum Ctx {
     Ordinary,
     StructuralNumbered,
     StructuralUnnumbered,
+    Appendix,
 }
 
 struct PendingTableCaption {
@@ -51,7 +52,6 @@ fn render_node<'a>(
 ) -> Result<()> {
     let value = node.data.borrow().value.clone();
 
-    // Если была подпись таблицы, а сейчас не таблица — сбрасываем как обычный текст
     if !matches!(value, NodeValue::Table(_)) {
         if let Some(pt) = pending.take() {
             out.push_str(&escape_latex(&pt.caption));
@@ -62,66 +62,54 @@ fn render_node<'a>(
     match value {
         NodeValue::Heading(h) => {
             let clean = strip_heading_number(&extract_text(node));
-            if h.level == 1 {
-                if is_structural(&clean, cfg) {
-                    if cfg.style.structural_headings_newpage {
-                        out.push_str("\\clearpage\n");
-                    }
-                    let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
-                    *ctx = if unnumbered {
-                        Ctx::StructuralUnnumbered
-                    } else {
-                        Ctx::StructuralNumbered
-                    };
-                    let upper = clean.trim().to_uppercase();
-                    // Печатаем ВСЕ структурные заголовки, включая ОСНОВНАЯ ЧАСТЬ
-                    out.push_str(&format!(
-                        "\\phantomsection\n\
-                         \\addcontentsline{{toc}}{{section}}{{{}}}\n\
-                         \\begin{{center}}\\textbf{{{}}}\\end{{center}}\n\
-                         \\vspace{{12pt}}\n\n",
-                        escape_latex(&upper),
-                        escape_latex(&upper)
-                    ));
-                } else {
-                    *ctx = Ctx::Ordinary;
+
+            if h.level == 1 && is_structural(&clean, cfg) {
+                if cfg.style.structural_headings_newpage {
                     out.push_str("\\clearpage\n");
-                    let upper = clean.trim().to_uppercase();
-                    out.push_str(&format!("\\section{{{}}}\n\n", escape_latex(&upper)));
                 }
-            } else {
-                let (cmd_star, numbered, is_top_section) = match (*ctx, h.level) {
-                    (Ctx::StructuralUnnumbered, 2) => ("section*", false, false),
-                    (Ctx::StructuralUnnumbered, 3) => ("subsection*", false, false),
-                    (Ctx::StructuralUnnumbered, _) => ("subsubsection*", false, false),
-                    (Ctx::StructuralNumbered, 2) => ("section", true, true),
-                    (Ctx::StructuralNumbered, 3) => ("subsection", true, false),
-                    (Ctx::StructuralNumbered, _) => ("subsubsection", true, false),
-                    (Ctx::Ordinary, 2) => ("subsection", true, false),
-                    (Ctx::Ordinary, 3) => ("subsubsection", true, false),
-                    (Ctx::Ordinary, _) => ("paragraph", true, false),
+                let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
+                *ctx = if unnumbered {
+                    Ctx::StructuralUnnumbered
+                } else {
+                    Ctx::StructuralNumbered
                 };
 
-                if is_top_section {
-                    out.push_str("\\clearpage\n");
-                    let upper = clean.trim().to_uppercase();
-                    out.push_str(&format!("\\section{{{}}}\n\n", escape_latex(&upper)));
+                if is_appendix_heading(&clean, cfg) {
+                    *ctx = Ctx::Appendix;
+                    render_appendix_heading(&clean, out, cfg)?;
                 } else {
-                    let display = to_title_case_if_upper(&clean);
-                    if !numbered {
-                        let toc_cmd = cmd_star.trim_end_matches('*');
-                        out.push_str(&format!(
-                            "\\phantomsection\n\
-                             \\addcontentsline{{toc}}{{{}}}{{{}}}\n\
-                             \\{}{{{}}}\n\n",
-                            toc_cmd,
-                            escape_latex(&display),
-                            cmd_star,
-                            escape_latex(&display)
-                        ));
-                    } else {
-                        out.push_str(&format!("\\{}{{{}}}\n\n", cmd_star, escape_latex(&display)));
-                    }
+                    render_structural_heading(&clean, out, cfg)?;
+                }
+            } else {
+                let (cmd, numbered) = match (*ctx, h.level) {
+                    (Ctx::StructuralUnnumbered, 2) => ("section*", false),
+                    (Ctx::StructuralUnnumbered, 3) => ("subsection*", false),
+                    (Ctx::StructuralUnnumbered, _) => ("subsubsection*", false),
+                    (Ctx::StructuralNumbered, 2) => ("section", true),
+                    (Ctx::StructuralNumbered, 3) => ("subsection", true),
+                    (Ctx::StructuralNumbered, _) => ("subsubsection", true),
+                    (Ctx::Appendix, 2) => ("subsection", true),
+                    (Ctx::Appendix, 3) => ("subsubsection", true),
+                    (Ctx::Appendix, _) => ("paragraph", true),
+                    (Ctx::Ordinary, 2) => ("subsection", true),
+                    (Ctx::Ordinary, 3) => ("subsubsection", true),
+                    (Ctx::Ordinary, _) => ("paragraph", true),
+                };
+
+                let display = to_title_case_if_upper(&clean);
+                if !numbered {
+                    let toc_cmd = cmd.trim_end_matches('*');
+                    out.push_str(&format!(
+                        "\\phantomsection\n\
+                         \\addcontentsline{{toc}}{{{}}}{{{}}}\n\
+                         \\{}{{{}}}\n\n",
+                        toc_cmd,
+                        escape_latex(&display),
+                        cmd,
+                        escape_latex(&display)
+                    ));
+                } else {
+                    out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(&display)));
                 }
             }
         }
@@ -141,7 +129,6 @@ fn render_node<'a>(
                 return Ok(());
             }
 
-            // Блочная формула $$...$$, стоящая отдельным абзацем
             let children: Vec<_> = node.children().collect();
             if children.len() == 1 {
                 if let NodeValue::Math(m) = &children[0].data.borrow().value {
@@ -228,35 +215,62 @@ fn render_node<'a>(
     Ok(())
 }
 
-fn strip_heading_number(text: &str) -> String {
-    let re = Regex::new(r"^\s*\d+(\.\d+)*\.?\s+").unwrap();
-    re.replace(text, "").trim().to_string()
+fn is_structural(text: &str, cfg: &Config) -> bool {
+    let t = text.trim().to_uppercase();
+    cfg.style.structural_list().iter().any(|h| {
+        let up = h.trim().to_uppercase();
+        t == up || (up == "ПРИЛОЖЕНИЕ" && t.starts_with("ПРИЛОЖЕНИЕ "))
+    })
 }
 
-fn to_title_case_if_upper(s: &str) -> String {
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
-        return String::new();
+fn is_appendix_heading(text: &str, cfg: &Config) -> bool {
+    let t = text.trim().to_uppercase();
+    if let Some(app) = cfg
+        .style
+        .structural_list()
+        .iter()
+        .find(|h| h.trim().eq_ignore_ascii_case("ПРИЛОЖЕНИЕ"))
+    {
+        let prefix = format!("{} ", app.trim().to_uppercase());
+        t.starts_with(&prefix)
+    } else {
+        false
     }
-    let has_letters = trimmed.chars().any(|c| c.is_alphabetic());
-    let all_upper = trimmed
-        .chars()
-        .filter(|c| c.is_alphabetic())
-        .all(|c| c.is_uppercase());
-    if !has_letters || !all_upper {
-        return trimmed.to_string();
-    }
-    let lower = trimmed.to_lowercase();
-    let mut chars = lower.chars();
-    match chars.next() {
-        Some(first) => {
-            let mut result = String::new();
-            result.extend(first.to_uppercase());
-            result.push_str(chars.as_str());
-            result
-        }
-        None => String::new(),
-    }
+}
+
+fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Result<()> {
+    let display = if cfg.style.structural_heading_uppercase {
+        text.trim().to_uppercase()
+    } else {
+        to_title_case_if_upper(text)
+    };
+    out.push_str(&format!(
+        "\\phantomsection\n\
+         \\addcontentsline{{toc}}{{section}}{{{}}}\n\
+         \\begin{{center}}\\textbf{{{}}}\\end{{center}}\n\
+         \\vspace{{12pt}}\n\n",
+        escape_latex(&display),
+        escape_latex(&display)
+    ));
+    Ok(())
+}
+
+fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result<()> {
+    let display = if cfg.style.structural_heading_uppercase {
+        text.trim().to_uppercase()
+    } else {
+        text.trim().to_string()
+    };
+    out.push_str(&format!(
+        "\\clearpage\n\
+         \\phantomsection\n\
+         \\addcontentsline{{toc}}{{section}}{{{}}}\n\
+         \\begin{{center}}\\textbf{{{}}}\\end{{center}}\n\
+         \\vspace{{6pt}}\n\n",
+        escape_latex(&display),
+        escape_latex(&display)
+    ));
+    Ok(())
 }
 
 fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> Result<()> {
@@ -301,39 +315,6 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
     Ok(())
 }
 
-fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, String, Option<String>) {
-    let mut rest = title.trim().to_string();
-    let mut label = None;
-    let mut width = default_width.to_string();
-
-    if rest.starts_with('#') {
-        let after = &rest[1..];
-        if let Some(space) = after.find(char::is_whitespace) {
-            label = Some(after[..space].to_string());
-            rest = after[space..].trim().to_string();
-        } else {
-            label = Some(after.to_string());
-            rest = String::new();
-        }
-    }
-
-    let mut caption_tokens: Vec<String> = Vec::new();
-    for token in rest.split_whitespace() {
-        if let Some(w) = token.strip_prefix("width=") {
-            width = w.to_string();
-        } else {
-            caption_tokens.push(token.to_string());
-        }
-    }
-    let caption = if caption_tokens.is_empty() {
-        None
-    } else {
-        Some(caption_tokens.join(" "))
-    };
-
-    (label, width, caption)
-}
-
 fn render_image<'a>(
     node: &'a AstNode<'a>,
     link: &NodeLink,
@@ -368,6 +349,12 @@ fn render_image<'a>(
             format!("{}\\textwidth", width)
         };
 
+    let interpolate_opt = if cfg.images.interpolate {
+        ",interpolate=true"
+    } else {
+        ""
+    };
+
     out.push_str("\\begin{figure}[H]\n  \\centering\n");
     if !cfg.style.figure_caption_below {
         if let Some(ref c) = final_caption {
@@ -378,8 +365,8 @@ fn render_image<'a>(
         }
     }
     out.push_str(&format!(
-        "  \\includegraphics[width={}]{{{}}}\n",
-        width_spec, src
+        "  \\includegraphics[width={}{}]{{{}}}\n",
+        width_spec, interpolate_opt, src
     ));
     if cfg.style.figure_caption_below {
         if let Some(ref c) = final_caption {
@@ -391,6 +378,39 @@ fn render_image<'a>(
     }
     out.push_str("\\end{figure}\n\n");
     Ok(())
+}
+
+fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, String, Option<String>) {
+    let mut rest = title.trim().to_string();
+    let mut label = None;
+    let mut width = default_width.to_string();
+
+    if rest.starts_with('#') {
+        let after = &rest[1..];
+        if let Some(space) = after.find(char::is_whitespace) {
+            label = Some(after[..space].to_string());
+            rest = after[space..].trim().to_string();
+        } else {
+            label = Some(after.to_string());
+            rest = String::new();
+        }
+    }
+
+    let mut caption_tokens: Vec<String> = Vec::new();
+    for token in rest.split_whitespace() {
+        if let Some(w) = token.strip_prefix("width=") {
+            width = w.to_string();
+        } else {
+            caption_tokens.push(token.to_string());
+        }
+    }
+    let caption = if caption_tokens.is_empty() {
+        None
+    } else {
+        Some(caption_tokens.join(" "))
+    };
+
+    (label, width, caption)
 }
 
 fn render_table<'a>(
@@ -429,7 +449,11 @@ fn render_table<'a>(
             }
         }
     }
-    out.push_str("  {\\small\n");
+    let baseline = compute_baseline(&cfg.style.table_font_size);
+    out.push_str(&format!(
+        "  {{\\fontsize{{{}}}{{{}}}\\selectfont\n",
+        cfg.style.table_font_size, baseline
+    ));
     out.push_str("  \\begin{tabularx}{\\textwidth}{|");
     out.push_str(&vec!["Y"; ncols].join("|"));
     out.push_str("|}\n  \\hline\n");
@@ -474,18 +498,44 @@ fn extract_text<'a>(node: &'a AstNode<'a>) -> String {
     s
 }
 
-fn is_structural(text: &str, cfg: &Config) -> bool {
-    let t = text.trim().to_uppercase();
-    for h in cfg.style.structural_list() {
-        let up = h.trim().to_uppercase();
-        if t == up {
-            return true;
-        }
-        if up == "ПРИЛОЖЕНИЕ" && t.starts_with("ПРИЛОЖЕНИЕ ") {
-            return true;
-        }
+fn strip_heading_number(text: &str) -> String {
+    let re = Regex::new(r"^\s*\d+(\.\d+)*\.?\s+").unwrap();
+    re.replace(text, "").trim().to_string()
+}
+
+fn to_title_case_if_upper(s: &str) -> String {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return String::new();
     }
-    false
+    let has_letters = trimmed.chars().any(|c| c.is_alphabetic());
+    let all_upper = trimmed
+        .chars()
+        .filter(|c| c.is_alphabetic())
+        .all(|c| c.is_uppercase());
+    if !has_letters || !all_upper {
+        return trimmed.to_string();
+    }
+    let lower = trimmed.to_lowercase();
+    let mut chars = lower.chars();
+    match chars.next() {
+        Some(first) => {
+            let mut result = String::new();
+            result.extend(first.to_uppercase());
+            result.push_str(chars.as_str());
+            result
+        }
+        None => String::new(),
+    }
+}
+
+fn compute_baseline(size: &str) -> String {
+    let s = size.trim();
+    if let Some(num) = s.strip_suffix("pt").and_then(|n| n.trim().parse::<f32>().ok()) {
+        format!("{}pt", (num * 1.2 * 10.0).round() / 10.0)
+    } else {
+        "14.4pt".to_string()
+    }
 }
 
 fn escape_url(url: &str) -> String {
