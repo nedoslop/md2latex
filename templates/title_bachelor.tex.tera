@@ -1,0 +1,48 @@
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+{\bfseries Министерство науки и высшего образования Российской Федерации}\\[0.3cm]
+{\bfseries {{ university }}}\\[0.3cm]
+{\bfseries {{ institute }}}\\[0.3cm]
+{\bfseries {{ department }}}
+
+\vspace{1.5cm}
+
+\begin{flushright}
+\begin{tabular}{l}
+УТВЕРЖДАЮ\\
+Заведующий кафедрой\\[0.2cm]
+\rule{5cm}{0.4pt}\\
+\rule{5cm}{0.4pt}\\
+«\rule{1cm}{0.4pt}» \rule{2.5cm}{0.4pt} 20\rule{0.8cm}{0.4pt} г.
+\end{tabular}
+\end{flushright}
+
+\vspace{1cm}
+
+\begin{center}
+{\Large\bfseries {{ doc_kind }}}\\[0.5cm]
+{\bfseries по направлению подготовки {{ direction_code }} «{{ direction_name }}»}\\[1cm]
+на тему:\\[0.3cm]
+{\Large\bfseries «{{ topic }}»}
+\end{center}
+
+\vfill
+
+\begin{flushright}
+\begin{tabular}{ll}
+Выпускник & \rule{5cm}{0.4pt} {{ student }}\\
+          & \hspace*{5cm}\small(подпись, дата)\\[0.3cm]
+Группа    & {{ group }}\\[0.5cm]
+Руководитель & {{ supervisor_title }}\\
+             & \rule{5cm}{0.4pt} {{ supervisor }}\\
+             & \hspace*{5cm}\small(подпись, дата)
+\end{tabular}
+\end{flushright}
+
+\vspace{1cm}
+
+\begin{center}
+{{ city }} {{ year }}
+\end{center}
+\end{titlepage}

@@ -1,0 +1,64 @@
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
+Министерство науки и высшего образования Российской Федерации\\
+Федеральное государственное автономное образовательное учреждение\\
+высшего образования\\
+{\bfseries «{{ university }}»}
+
+\vspace{0.8cm}
+
+{{ institute }}\\[-0.2cm]
+{\scriptsize институт}
+
+\vspace{0.3cm}
+
+{{ department }}\\[-0.2cm]
+{\scriptsize кафедра}
+\end{center}
+
+\vspace{1.2cm}
+
+\begin{center}
+{\bfseries {{ doc_kind }}}\\[0.6cm]
+{{ topic }}\\[-0.25cm]
+{\scriptsize тема проекта (работы)}
+\end{center}
+
+\vfill
+
+\noindent
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{6.5cm} c X@{}}
+\begin{tabular}[t]{@{}l@{}}
+  Руководитель
+\end{tabular}
+  & \begin{tabular}[t]{@{}c@{}}
+      \rule{3cm}{0.4pt}\\
+      {\scriptsize подпись, дата}
+    \end{tabular}
+  & \begin{tabular}[t]{@{}c@{}}
+      {{ supervisor }}\\
+      {\scriptsize инициалы, фамилия}
+    \end{tabular} \\[1.2cm]
+
+\begin{tabular}[t]{@{}l@{}}
+  Студент\\
+  {{ group }}{% if student_id | trim != "" %} / {{ student_id }}{% endif %}\\
+  {\scriptsize номер группы, зачетной книжки}
+\end{tabular}
+  & \begin{tabular}[t]{@{}c@{}}
+      \rule{3cm}{0.4pt}\\
+      {\scriptsize подпись, дата}
+    \end{tabular}
+  & \begin{tabular}[t]{@{}c@{}}
+      {{ student }}\\
+      {\scriptsize инициалы, фамилия}
+    \end{tabular} \\
+\end{tabularx}
+
+\vspace{1.5cm}
+
+\begin{center}
+{{ city }} {{ year }}
+\end{center}
+\end{titlepage}

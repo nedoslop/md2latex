@@ -1,0 +1,38 @@
+# Temp
+temp
+out
+backups
+
+# Rust
+/target
+
+# Python
+__pycache__
+
+# IDE
+.zed
+.idea
+.vscode
+.vs
+
+# Databases
+*.db
+*.db-wal
+*.db-shm
+
+# Binaries
+*.exe
+*.dll
+*.out
+*.pdb
+*.pyc
+*.pyx
+
+# Archives
+joined.txt
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+*.xz

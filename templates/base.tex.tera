@@ -1,0 +1,205 @@
+\documentclass[{{- font_size | trim -}},a4paper]{extarticle}
+
+% ========== Языки и шрифты ==========
+\usepackage{polyglossia}
+\setdefaultlanguage{russian}
+\setotherlanguage{english}
+\usepackage{fontspec}
+
+\IfFontExistsTF{ {{- font | trim -}} }{
+  \setmainfont{ {{- font | trim -}} }
+  \newfontfamily\cyrillicfont{ {{- font | trim -}} }
+  \IfFontExistsTF{Courier New}{
+    \setmonofont{Courier New}
+    \newfontfamily\cyrillicfonttt{Courier New}
+  }{
+    \setmonofont{DejaVu Sans Mono}
+    \newfontfamily\cyrillicfonttt{DejaVu Sans Mono}
+  }
+}{
+  \setmainfont{ {{- font_fallback | trim -}} }
+  \newfontfamily\cyrillicfont{ {{- font_fallback | trim -}} }
+  \setmonofont{TeX Gyre Cursor}
+  \newfontfamily\cyrillicfonttt{TeX Gyre Cursor}
+}
+
+% ========== Геометрия страницы ==========
+\usepackage[
+  left={{- margin_left | trim -}},
+  right={{- margin_right | trim -}},
+  top={{- margin_top | trim -}},
+  bottom={{- margin_bottom | trim -}},
+  footskip=10mm
+]{geometry}
+
+% ========== Интервалы и абзацы ==========
+\usepackage{setspace}
+{% if line_spacing == "double" %}\doublespacing
+{% elif line_spacing == "onehalf" %}\onehalfspacing
+{% else %}\singlespacing
+{% endif %}
+\usepackage{indentfirst}
+\setlength{\parindent}{ {{- paragraph_indent | trim -}} }
+\setlength{\parskip}{0pt}
+\sloppy
+
+% ========== Графика, таблицы, формулы ==========
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{array}
+\usepackage{tabularx}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+\renewcommand{\arraystretch}{1.2}
+\usepackage{amsmath,amssymb}
+\usepackage{caption}
+
+% ========== Подписи по СТУ 7.5-07 ==========
+\DeclareCaptionLabelSeparator{stu}{~\textendash~}
+\captionsetup[figure]{
+  labelsep=stu,
+  justification=centering,
+  position={% if figure_caption_below %}below{% else %}above{% endif %},
+  singlelinecheck=false,
+  font={normalsize}
+}
+\captionsetup[table]{
+  labelsep=stu,
+  justification=raggedright,
+  position={% if table_caption_above %}above{% else %}below{% endif %},
+  singlelinecheck=false,
+  font={normalsize},
+  skip=4pt
+}
+
+% ========== Списки по СТУ 7.5-07 ==========
+\usepackage{enumitem}
+\setlist[itemize]{
+  label=--,
+  leftmargin=0pt,
+  itemindent=\parindent,
+  labelsep=0.5em,
+  topsep=0pt,
+  partopsep=0pt,
+  parsep=0pt,
+  itemsep=0pt
+}
+\setlist[enumerate]{
+  label=\arabic*.,
+  leftmargin=0pt,
+  itemindent=\parindent,
+  labelsep=0.5em,
+  topsep=0pt,
+  partopsep=0pt,
+  parsep=0pt,
+  itemsep=0pt
+}
+
+% ========== Перенумерация ==========
+{% if numbering == "within_section" %}
+\usepackage{chngcntr}
+\counterwithin{figure}{section}
+\counterwithin{table}{section}
+\counterwithin{equation}{section}
+{% endif %}
+
+% ========== Ссылки ==========
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=black,
+  pdftitle={ {{- topic | trim -}} },
+  pdfauthor={ {{- student_author | trim -}} }
+}
+
+{% if use_biblatex %}
+\usepackage[style=gost-numeric,sorting=none]{biblatex}
+\addbibresource{ {{- bib_file | trim -}} }
+{% endif %}
+
+% ========== Нумерация страниц ==========
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[C]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
+
+% ========== Заголовки разделов по СТУ 7.5-07 ==========
+\usepackage{titlesec}
+
+{% if section_bold %}
+\titleformat{\section}[block]
+  {\normalfont\bfseries\centering\MakeUppercase}
+  {\thesection~}
+  {0pt}
+  {}
+{% else %}
+\titleformat{\section}[block]
+  {\normalfont\centering\MakeUppercase}
+  {\thesection~}
+  {0pt}
+  {}
+{% endif %}
+\titlespacing*{\section}{0pt}{0pt}{12pt}
+
+\titleformat{\subsection}[block]
+  {\normalfont\bfseries\hspace{\parindent}}
+  {\thesubsection~}
+  {0pt}
+  {}
+\titlespacing*{\subsection}{0pt}{12pt}{6pt}
+
+\titleformat{\subsubsection}[block]
+  {\normalfont\bfseries\hspace{\parindent}}
+  {\thesubsubsection~}
+  {0pt}
+  {}
+\titlespacing*{\subsubsection}{0pt}{12pt}{6pt}
+
+% ========== Названия ==========
+\addto\captionsrussian{
+  \renewcommand{\contentsname}{СОДЕРЖАНИЕ}
+  \renewcommand{\refname}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
+  \renewcommand{\figurename}{Рисунок}
+  \renewcommand{\tablename}{Таблица}
+}
+
+% ========== Содержание ==========
+\usepackage{tocloft}
+\renewcommand{\cfttoctitlefont}{\hfill\normalfont\bfseries}
+\renewcommand{\cftaftertoctitle}{\hfill}
+\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftsecfont}{\normalfont}
+\renewcommand{\cftsecpagefont}{\normalfont}
+\setlength{\cftbeforesecskip}{2pt}
+\setlength{\cftbeforesubsecskip}{2pt}
+\renewcommand{\cftdotsep}{1.5}
+
+\begin{document}
+
+{{ title_page }}
+
+% TOC должен быть на странице 2, тело — с 3
+\setcounter{page}{2}
+\clearpage
+\tableofcontents
+\clearpage
+
+{{ body }}
+
+{% if use_biblatex %}
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
+\begin{center}\textbf{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}\end{center}
+\vspace{12pt}
+\printbibliography[heading=none]
+{% endif %}
+
+\end{document}
