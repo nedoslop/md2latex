@@ -1,64 +1,79 @@
 \begin{titlepage}
 \thispagestyle{empty}
 \begin{center}
-Министерство науки и высшего образования Российской Федерации\\
-Федеральное государственное автономное образовательное учреждение\\
-высшего образования\\
-{\bfseries «{{ university }}»}
-
-\vspace{0.8cm}
-
-{{ institute }}\\[-0.2cm]
-{\scriptsize институт}
-
-\vspace{0.3cm}
-
-{{ department }}\\[-0.2cm]
-{\scriptsize кафедра}
-\end{center}
-
-\vspace{1.2cm}
-
-\begin{center}
-{\bfseries {{ doc_kind }}}\\[0.6cm]
-{{ topic }}\\[-0.25cm]
-{\scriptsize тема проекта (работы)}
-\end{center}
-
-\vfill
-
-\noindent
-\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{6.5cm} c X@{}}
-\begin{tabular}[t]{@{}l@{}}
-  Руководитель
-\end{tabular}
-  & \begin{tabular}[t]{@{}c@{}}
-      \rule{3cm}{0.4pt}\\
-      {\scriptsize подпись, дата}
-    \end{tabular}
-  & \begin{tabular}[t]{@{}c@{}}
-      {{ supervisor }}\\
-      {\scriptsize инициалы, фамилия}
-    \end{tabular} \\[1.2cm]
-
-\begin{tabular}[t]{@{}l@{}}
-  Студент\\
-  группа {{ group }}{% if student_id | trim != "" %} / {{ student_id }}{% endif %}\\
-  {\scriptsize номер группы, зачетной книжки}
-\end{tabular}
-  & \begin{tabular}[t]{@{}c@{}}
-      \rule{3cm}{0.4pt}\\
-      {\scriptsize подпись, дата}
-    \end{tabular}
-  & \begin{tabular}[t]{@{}c@{}}
-      {{ student }}\\
-      {\scriptsize инициалы, фамилия}
-    \end{tabular} \\
-\end{tabularx}
+{\fontsize{14pt}{16.8pt}\selectfont
+Министерство науки и высшего образования РФ\\}
+{\fontsize{12pt}{14.4pt}\selectfont
+Федеральное государственное автономное\\
+образовательное учреждение высшего образования\\
+\textbf{\MakeUppercase{«Сибирский федеральный университет»}}}
 
 \vspace{1.5cm}
 
+{% if institute | trim != "" %}
+{\fontsize{14pt}{16.8pt}\selectfont {{ institute }}\par}
+{% else %}
+\rule{12cm}{0.4pt}\par
+{% endif %}
+{\fontsize{10pt}{12pt}\selectfont институт\par}
+
+\vspace{0.8cm}
+
+{% if department | trim != "" %}
+{\fontsize{14pt}{16.8pt}\selectfont {{ department }}\par}
+{% else %}
+\rule{12cm}{0.4pt}\par
+{% endif %}
+{\fontsize{10pt}{12pt}\selectfont кафедра\par}
+\end{center}
+
+\vspace{2cm}
+
 \begin{center}
-{{ city }} {{ year }}
+{\fontsize{14pt}{16.8pt}\selectfont\bfseries {{ doc_kind }}\par}
+
+\vspace{0.8cm}
+
+{\fontsize{14pt}{16.8pt}\selectfont {{ topic }}\par}
+\vspace{0.1cm}
+{\fontsize{10pt}{12pt}\selectfont тема проекта (работы)\par}
+\end{center}
+
+\vspace{2cm}
+
+\noindent
+\begin{tabularx}{\textwidth}{@{} l X r @{}}
+\begin{tabular}[t]{@{}l@{}}
+  \fontsize{14pt}{16.8pt}\selectfont Руководитель
+\end{tabular} &
+&
+\begin{tabular}[t]{@{}c@{}}
+  \rule{4cm}{0.4pt}\\
+  {\fontsize{10pt}{12pt}\selectfont подпись, дата}
+\end{tabular}\hspace{1.5cm}
+\begin{tabular}[t]{@{}l@{}}
+  \fontsize{14pt}{16.8pt}\selectfont {{ supervisor }}\\
+  {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
+\end{tabular} \\[1.5cm]
+
+\begin{tabular}[t]{@{}l@{}}
+  \fontsize{14pt}{16.8pt}\selectfont Студент{% if group | trim != "" %}, {{ group }}{% endif %}\\
+  {\fontsize{10pt}{12pt}\selectfont номер группы, зачетной книжки}
+\end{tabular} &
+&
+\begin{tabular}[t]{@{}c@{}}
+  \rule{4cm}{0.4pt}\\
+  {\fontsize{10pt}{12pt}\selectfont подпись, дата}
+\end{tabular}\hspace{1.5cm}
+\begin{tabular}[t]{@{}l@{}}
+  \fontsize{14pt}{16.8pt}\selectfont {{ student }}\\
+  {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
+\end{tabular} \\
+\end{tabularx}
+
+\vfill
+
+\begin{center}
+{\fontsize{14pt}{16.8pt}\selectfont {{ city }} {{ year }}}
 \end{center}
 \end{titlepage}

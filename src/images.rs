@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use image::ImageFormat; // для растровых форматов через прямой крейт
+use image::ImageFormat;
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -43,22 +43,13 @@ pub fn prepare_images(
             return caps[0].to_string();
         }
 
-        let base_name = full_src
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "image".into());
+        let base_name = full_src.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "image".into());
 
         let mut sanitized = sanitize(&base_name);
         let mut n = 1;
         while used_names.contains(&sanitized) && images_out.join(&sanitized) != full_src {
-            let stem = Path::new(&base_name)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "image".into());
-            let ext = Path::new(&base_name)
-                .extension()
-                .map(|s| format!(".{}", s.to_string_lossy()))
-                .unwrap_or_default();
+            let stem = Path::new(&base_name).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "image".into());
+            let ext = Path::new(&base_name).extension().map(|s| format!(".{}", s.to_string_lossy())).unwrap_or_default();
             sanitized = format!("{}_{}{}", sanitize(&stem), n, ext);
             n += 1;
         }
@@ -74,13 +65,7 @@ pub fn prepare_images(
                     dest = target_name;
                     sanitized = dest.file_name().unwrap().to_string_lossy().to_string();
                 }
-                Err(e) => {
-                    eprintln!(
-                        "⚠️  Не удалось конвертировать {}: {}",
-                        full_src.display(),
-                        e
-                    );
-                }
+                Err(e) => eprintln!("⚠️  Не удалось конвертировать {}: {}", full_src.display(), e),
             }
         }
 
@@ -101,9 +86,7 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
     match ext {
         "pdf" => raster_to_pdf(src, dst, dpi),
         "png" | "jpg" | "jpeg" | "bmp" | "gif" | "tiff" | "webp" => {
-            // Для растровых форматов используем прямой крейт image
-            let img = image::open(src)
-                .with_context(|| format!("Не удалось открыть {}", src.display()))?;
+            let img = image::open(src).with_context(|| format!("Не удалось открыть {}", src.display()))?;
             let format = match ext {
                 "png" => ImageFormat::Png,
                 "jpg" | "jpeg" => ImageFormat::Jpeg,
@@ -113,8 +96,7 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
                 "webp" => ImageFormat::WebP,
                 _ => unreachable!(),
             };
-            img.save_with_format(dst, format)
-                .with_context(|| format!("Не удалось сохранить {}", dst.display()))?;
+            img.save_with_format(dst, format).with_context(|| format!("Не удалось сохранить {}", dst.display()))?;
             Ok(())
         }
         other => anyhow::bail!("Неподдерживаемый формат: {}", other),
@@ -124,10 +106,7 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
 fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
     use printpdf::*;
 
-    // Загружаем изображение через реэкспорт image_crate из printpdf,
-    // чтобы типы DynamicImage совпадали
-    let img =
-        image_crate::open(src).with_context(|| format!("Не удалось открыть {}", src.display()))?;
+    let img = image_crate::open(src).with_context(|| format!("Не удалось открыть {}", src.display()))?;
     let (w, h) = (img.width(), img.height());
     let dpi_f = dpi.max(1) as f32;
     let width_mm = (w as f32) * 25.4 / dpi_f;
@@ -136,25 +115,16 @@ fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
     let (doc, page1, layer1) = PdfDocument::new("image", Mm(width_mm), Mm(height_mm), "Image");
     let current_layer = doc.get_page(page1).get_layer(layer1);
 
-    // img уже имеет тип DynamicImage из image_crate (совместимый с printpdf)
     let pdf_image = Image::from_dynamic_image(&img);
     pdf_image.add_to_layer(current_layer, ImageTransform::default());
 
-    let file =
-        fs::File::create(dst).with_context(|| format!("Не удалось создать {}", dst.display()))?;
-    doc.save(&mut std::io::BufWriter::new(file))
-        .with_context(|| format!("Не удалось записать {}", dst.display()))?;
+    let file = fs::File::create(dst).with_context(|| format!("Не удалось создать {}", dst.display()))?;
+    doc.save(&mut std::io::BufWriter::new(file)).with_context(|| format!("Не удалось записать {}", dst.display()))?;
     Ok(())
 }
 
 fn sanitize(name: &str) -> String {
-    name.chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
+    name.chars().map(|c| {
+        if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' }
+    }).collect()
 }

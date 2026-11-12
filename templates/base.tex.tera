@@ -23,7 +23,7 @@
   \newfontfamily\cyrillicfonttt{TeX Gyre Cursor}
 }
 
-% ========== Геометрия страницы ==========
+% ========== Геометрия (СТУ 7.5-07) ==========
 \usepackage[
   left={{- margin_left | trim -}},
   right={{- margin_right | trim -}},
@@ -52,47 +52,35 @@
 \renewcommand{\arraystretch}{1.2}
 \usepackage{amsmath,amssymb}
 \usepackage{caption}
+\usepackage{xcolor}
 
-% ========== Подписи по СТУ 7.5-07 ==========
+% ========== Подписи ==========
 \DeclareCaptionLabelSeparator{stu}{~\textendash~}
-\DeclareCaptionFont{captionfont}{\fontsize{ {{- caption_font_size | trim -}} }{ {{- caption_baseline | trim -}} }\selectfont}
 \captionsetup[figure]{
   labelsep=stu,
   justification=centering,
   position={% if figure_caption_below %}bottom{% else %}top{% endif %},
   singlelinecheck=false,
-  font=captionfont
+  font={normalsize}
 }
 \captionsetup[table]{
   labelsep=stu,
   justification=raggedright,
   position={% if table_caption_above %}top{% else %}bottom{% endif %},
   singlelinecheck=false,
-  font=captionfont,
+  font={normalsize},
   skip=4pt
 }
 
-% ========== Списки по СТУ 7.5-07 ==========
+% ========== Списки ==========
 \usepackage{enumitem}
 \setlist[itemize]{
-  label=--,
-  leftmargin=0pt,
-  itemindent=\parindent,
-  labelsep=0.5em,
-  topsep=0pt,
-  partopsep=0pt,
-  parsep=0pt,
-  itemsep=0pt
+  label=--, leftmargin=\parindent, labelsep=0.5em,
+  topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
 \setlist[enumerate]{
-  label=\arabic*.,
-  leftmargin=0pt,
-  itemindent=\parindent,
-  labelsep=0.5em,
-  topsep=0pt,
-  partopsep=0pt,
-  parsep=0pt,
-  itemsep=0pt
+  label=\arabic*., leftmargin=\parindent, labelsep=0.5em,
+  topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
 
 % ========== Перенумерация ==========
@@ -101,25 +89,6 @@
 \counterwithin{figure}{section}
 \counterwithin{table}{section}
 \counterwithin{equation}{section}
-{% endif %}
-
-% ========== Ссылки ==========
-\usepackage{hyperref}
-\hypersetup{
-  colorlinks={% if links_colored %}true{% else %}false{% endif %},
-  linkcolor={ {{- links_link_color | trim -}} },
-  citecolor={ {{- links_cite_color | trim -}} },
-  urlcolor={ {{- links_url_color | trim -}} },
-  filecolor={ {{- links_url_color | trim -}} },
-  linktoc=none,
-  pdfborder={% if links_boxed %}0 0 1{% else %}0 0 0{% endif %},
-  pdftitle={ {{- topic | trim -}} },
-  pdfauthor={ {{- student_author | trim -}} }
-}
-
-{% if use_biblatex %}
-\usepackage[style=gost-numeric,sorting=none]{biblatex}
-\addbibresource{ {{- bib_file | trim -}} }
 {% endif %}
 
 % ========== Нумерация страниц ==========
@@ -134,45 +103,29 @@
   \renewcommand{\headrulewidth}{0pt}
 }
 
-% ========== Заголовки разделов по СТУ 7.5-07 ==========
+% ========== Заголовки разделов ==========
 \usepackage{titlesec}
 
 {% if section_bold %}
 \titleformat{\section}[block]
-  {\normalfont\bfseries\{{ section_align }}\MakeUppercase}
-  {\thesection~}
-  {0pt}
-  {}
+  {\normalfont\bfseries\{{ section_align }}{% if section_uppercase %}\MakeUppercase{% endif %}}
+  {\thesection~}{0pt}{}
 {% else %}
 \titleformat{\section}[block]
-  {\normalfont\{{ section_align }}\MakeUppercase}
-  {\thesection~}
-  {0pt}
-  {}
+  {\normalfont\{{ section_align }}{% if section_uppercase %}\MakeUppercase{% endif %}}
+  {\thesection~}{0pt}{}
 {% endif %}
 \titlespacing*{\section}{0pt}{ {{- section_before_skip | trim -}} }{ {{- section_after_skip | trim -}} }
 
 \titleformat{\subsection}[block]
   {\normalfont\bfseries\hspace{\parindent}}
-  {\thesubsection~}
-  {0pt}
-  {}
+  {\thesubsection~}{0pt}{}
 \titlespacing*{\subsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
 
 \titleformat{\subsubsection}[block]
   {\normalfont\bfseries\hspace{\parindent}}
-  {\thesubsubsection~}
-  {0pt}
-  {}
+  {\thesubsubsection~}{0pt}{}
 \titlespacing*{\subsubsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
-
-% ========== Названия ==========
-\addto\captionsrussian{
-  \renewcommand{\contentsname}{СОДЕРЖАНИЕ}
-  \renewcommand{\refname}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
-  \renewcommand{\figurename}{Рисунок}
-  \renewcommand{\tablename}{Таблица}
-}
 
 % ========== Содержание ==========
 \usepackage{tocloft}
@@ -184,6 +137,39 @@
 \setlength{\cftbeforesecskip}{2pt}
 \setlength{\cftbeforesubsecskip}{2pt}
 \renewcommand{\cftdotsep}{1.5}
+
+% ========== Ссылки ==========
+{% if links_colored %}
+\usepackage[breaklinks=true]{hyperref}
+{% else %}
+\usepackage[breaklinks=true,hidelinks]{hyperref}
+{% endif %}
+\hypersetup{
+  colorlinks={% if links_colored %}true{% else %}false{% endif %},
+  linkcolor={ {{- links_link_color | trim -}} },
+  citecolor={ {{- links_cite_color | trim -}} },
+  urlcolor={ {{- links_url_color | trim -}} },
+  filecolor={ {{- links_url_color | trim -}} },
+  linktoc=all,
+  pdfborder={% if links_boxed %}0 0 1{% else %}0 0 0{% endif %},
+  pdftitle={ {{- topic | trim -}} },
+  pdfauthor={ {{- student_author | trim -}} }
+}
+\urlstyle{same}
+\usepackage{xurl}
+
+{% if use_biblatex %}
+\usepackage[style=gost-numeric,sorting=none]{biblatex}
+\addbibresource{ {{- bib_file | trim -}} }
+{% endif %}
+
+% ========== Названия ==========
+\addto\captionsrussian{
+  \renewcommand{\contentsname}{СОДЕРЖАНИЕ}
+  \renewcommand{\refname}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
+  \renewcommand{\figurename}{Рисунок}
+  \renewcommand{\tablename}{Таблица}
+}
 
 \begin{document}
 

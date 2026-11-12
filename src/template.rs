@@ -5,18 +5,9 @@ use tera::{Context as TeraContext, Tera};
 pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     let mut tera = Tera::default();
     tera.add_raw_template("base.tex.tera", include_str!("../templates/base.tex.tera"))?;
-    tera.add_raw_template(
-        "title_bachelor.tex.tera",
-        include_str!("../templates/title_bachelor.tex.tera"),
-    )?;
-    tera.add_raw_template(
-        "title_master.tex.tera",
-        include_str!("../templates/title_master.tex.tera"),
-    )?;
-    tera.add_raw_template(
-        "title_course.tex.tera",
-        include_str!("../templates/title_course.tex.tera"),
-    )?;
+    tera.add_raw_template("title_bachelor.tex.tera", include_str!("../templates/title_bachelor.tex.tera"))?;
+    tera.add_raw_template("title_master.tex.tera", include_str!("../templates/title_master.tex.tera"))?;
+    tera.add_raw_template("title_course.tex.tera", include_str!("../templates/title_course.tex.tera"))?;
 
     let title_template = match cfg.project.doc_type.as_str() {
         "vkr_master" => "title_master.tex.tera",
@@ -44,13 +35,11 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("line_spacing", &cfg.style.line_spacing);
     ctx.insert("numbering", &cfg.style.numbering);
     ctx.insert("section_bold", &cfg.style.section_bold);
+    ctx.insert("section_uppercase", &cfg.style.section_uppercase);
     ctx.insert("figure_caption_below", &cfg.style.figure_caption_below);
     ctx.insert("table_caption_above", &cfg.style.table_caption_above);
     ctx.insert("caption_font_size", &cfg.style.caption_font_size);
-    ctx.insert(
-        "caption_baseline",
-        &compute_baseline(&cfg.style.caption_font_size),
-    );
+    ctx.insert("caption_baseline", &compute_baseline(&cfg.style.caption_font_size));
     ctx.insert("table_font_size", &cfg.style.table_font_size);
     ctx.insert("section_align", &cfg.style.section_align);
     ctx.insert("section_before_skip", &cfg.style.section_before_skip);
@@ -67,22 +56,12 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("images_interpolate", &cfg.images.interpolate);
 
     ctx.insert("use_biblatex", &cfg.bibliography.use_biblatex);
-    ctx.insert(
-        "bib_file",
-        &cfg.project
-            .bib_file
-            .clone()
-            .unwrap_or_else(|| "refs.bib".into()),
-    );
+    ctx.insert("bib_file", &cfg.project.bib_file.clone().unwrap_or_else(|| "refs.bib".into()));
 
     ctx.insert("topic", &cfg.title.topic);
-    ctx.insert(
-        "student_author",
-        &fill_or_blank(&cfg.title.student, cfg.style.title_page_fill_empty),
-    );
+    ctx.insert("student_author", &fill_or_blank(&cfg.title.student, cfg.style.title_page_fill_empty));
 
-    tera.render("base.tex.tera", &ctx)
-        .context("Ошибка рендеринга base.tex.tera")
+    tera.render("base.tex.tera", &ctx).context("Ошибка рендеринга base.tex.tera")
 }
 
 fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
@@ -99,21 +78,14 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     ctx.insert("student_id", &t.student_id);
     ctx.insert("group", &fill_or_blank(&t.group, fill));
     ctx.insert("supervisor", &fill_or_blank(&t.supervisor, fill));
-    ctx.insert(
-        "supervisor_title",
-        &fill_or_blank(&t.supervisor_title, fill),
-    );
+    ctx.insert("supervisor_title", &fill_or_blank(&t.supervisor_title, fill));
     ctx.insert("reviewer", &fill_or_blank(&t.reviewer, fill));
     ctx.insert("year", &t.year);
     ctx.insert("city", &t.city);
 }
 
 fn fill_or_blank(value: &str, fill: bool) -> String {
-    if value.trim().is_empty() && fill {
-        "________".to_string()
-    } else {
-        value.to_string()
-    }
+    if value.trim().is_empty() && fill { "________".to_string() } else { value.to_string() }
 }
 
 fn compute_baseline(size: &str) -> String {
@@ -121,6 +93,6 @@ fn compute_baseline(size: &str) -> String {
     if let Some(num) = s.strip_suffix("pt").and_then(|n| n.trim().parse::<f32>().ok()) {
         format!("{}pt", (num * 1.2 * 10.0).round() / 10.0)
     } else {
-        "14.4pt".to_string()
+        "16.8pt".to_string()
     }
 }

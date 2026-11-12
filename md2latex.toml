@@ -9,6 +9,8 @@ bib_file = ""
 font = "Times New Roman"
 font_fallback = "TeX Gyre Termes"
 font_size = "14pt"
+main_font = "Times New Roman"
+mono_font = "Courier New"
 
 margin_left = "30mm"
 margin_right = "10mm"
@@ -17,46 +19,47 @@ margin_bottom = "20mm"
 
 paragraph_indent = "12.5mm"
 line_spacing = "onehalf"
-
 numbering = "within_section"
 
+section_before_skip = "12pt"
+section_after_skip = "12pt"
+subsection_before_skip = "12pt"
+subsection_after_skip = "6pt"
+
+section_align = "center"
+section_bold = true
+section_uppercase = false
+
+caption_font_size = "14pt"
+table_font_size = "12pt"
+
+structural_heading_uppercase = true
 title_page_fill_empty = true
 
-# Все структурные заголовки: центрируются, идут прописными, с новой страницы.
 structural_headings = [
-    "ВВЕДЕНИЕ",
-    "ЗАКЛЮЧЕНИЕ",
-    "СОДЕРЖАНИЕ",
-    "РЕФЕРАТ",
-    "АННОТАЦИЯ",
-    "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ",
-    "СПИСОК СОКРАЩЕНИЙ",
-    "ПРИЛОЖЕНИЕ",
-    "ОСНОВНАЯ ЧАСТЬ",
+  "ВВЕДЕНИЕ", "ЗАКЛЮЧЕНИЕ", "СОДЕРЖАНИЕ", "РЕФЕРАТ", "АННОТАЦИЯ",
+  "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", "СПИСОК СОКРАЩЕНИЙ", "ПРИЛОЖЕНИЕ", "ОСНОВНАЯ ЧАСТЬ",
 ]
-
-# Подразделы под этими заголовками идут БЕЗ номера.
-# "ОСНОВНАЯ ЧАСТЬ" сюда не входит — под ней разделы нумеруются.
 structural_headings_unnumbered_subsections = [
-    "ВВЕДЕНИЕ",
-    "ЗАКЛЮЧЕНИЕ",
-    "РЕФЕРАТ",
-    "АННОТАЦИЯ",
-    "СОДЕРЖАНИЕ",
-    "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ",
-    "СПИСОК СОКРАЩЕНИЙ",
-    "ПРИЛОЖЕНИЕ",
+  "ВВЕДЕНИЕ", "ЗАКЛЮЧЕНИЕ", "РЕФЕРАТ", "АННОТАЦИЯ", "СОДЕРЖАНИЕ",
+  "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", "СПИСОК СОКРАЩЕНИЙ", "ПРИЛОЖЕНИЕ",
 ]
-
 structural_headings_newpage = true
-section_bold = true
 
 figure_caption_below = true
 table_caption_above = true
-
-# Дефолтная ширина рисунков (доля от \textwidth), можно переопределить
-# в title картинки: "![alt](path "#fig:x width=0.5")".
 default_figure_width = "0.8"
+
+[links]
+colored = true
+link_color = "black"
+cite_color = "black"
+url_color = "blue"
+boxed = false
+
+[images]
+interpolate = true
+dpi = 300
 
 [title]
 university = "Сибирский федеральный университет"
@@ -72,7 +75,7 @@ group = "ПИ21-01"
 supervisor = "П. П. Петров"
 supervisor_title = "доцент, канд. техн. наук"
 reviewer = ""
-year = "2025"
+year = "2026"
 city = "Красноярск"
 
 [bibliography]
