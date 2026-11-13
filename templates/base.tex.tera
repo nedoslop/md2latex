@@ -16,8 +16,8 @@
 \usepackage{fontspec}
 
 \IfFontExistsTF{ {{- main_font | trim -}} }{
-  \setmainfont{ {{- main_font | trim -}} }
-  \newfontfamily\cyrillicfont{ {{- main_font | trim -}} }
+  \setmainfont[Ligatures=TeX]{ {{- main_font | trim -}} }
+  \newfontfamily\cyrillicfont[Ligatures=TeX]{ {{- main_font | trim -}} }
   \IfFontExistsTF{ {{- mono_font | trim -}} }{
     \setmonofont{ {{- mono_font | trim -}} }
     \newfontfamily\cyrillicfonttt{ {{- mono_font | trim -}} }
@@ -26,11 +26,18 @@
     \newfontfamily\cyrillicfonttt{DejaVu Sans Mono}
   }
 }{
-  \setmainfont{ {{- font_fallback | trim -}} }
-  \newfontfamily\cyrillicfont{ {{- font_fallback | trim -}} }
+  \setmainfont[Ligatures=TeX]{ {{- font_fallback | trim -}} }
+  \newfontfamily\cyrillicfont[Ligatures=TeX]{ {{- font_fallback | trim -}} }
   \setmonofont{TeX Gyre Cursor}
   \newfontfamily\cyrillicfonttt{TeX Gyre Cursor}
 }
+
+% ========== Выравнивание правого края и переносы ==========
+\usepackage[protrusion=true,expansion=false]{microtype}
+\sloppy
+\emergencystretch=2em
+\hyphenpenalty=50
+\exhyphenpenalty=50
 
 % ========== Интервалы и абзацы ==========
 \usepackage{setspace}
@@ -77,7 +84,7 @@
 \usepackage{enumitem}
 % Маркер с красной строки (12.5мм), последующие строки от левого поля (leftmargin=0pt)
 \setlist[itemize]{
-  label=--,
+  label=\textendash,
   wide=\parindent,
   leftmargin=0pt,
   labelsep=0.5em,
@@ -142,11 +149,31 @@
 \setlength{\cftbeforetoctitleskip}{0pt}
 \setlength{\cftaftertoctitleskip}{\baselineskip}
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftsecfont}{\normalfont}
 \renewcommand{\cftsecpagefont}{\normalfont}
 \setlength{\cftbeforesecskip}{2pt}
 \setlength{\cftbeforesubsecskip}{2pt}
 \renewcommand{\cftdotsep}{1.5}
+
+% Делаем точки (leaders) в содержании частью кликабельной ссылки hyperref
+{% raw %}
+\makeatletter
+\let\old@contentsline\contentsline
+\renewcommand{\contentsline}[4]{%
+  \old@contentsline{#1}{\hyperlink{#4}{#2}}{\hyperlink{#4}{#3}}{#4}%
+}
+\renewcommand{\cftdotfill}[1]{%
+  \def\@tempa{#1}%
+  \def\@tempb{\cftnodots}%
+  \ifx\@tempa\@tempb
+    \hfill
+  \else
+    \leaders\hbox{$\m@th\mkern #1 mu\hbox{\cftdot}\mkern #1 mu$}\hfill
+  \fi
+}
+\makeatother
+{% endraw %}
 
 % ========== Ссылки ==========
 {% if links_colored %}

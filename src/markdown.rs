@@ -281,6 +281,10 @@ fn is_structural(text: &str, cfg: &Config) -> bool {
     })
 }
 
+fn normalize_dashes(text: &str) -> String {
+    text.replace(" --- ", " — ").replace(" -- ", " — ")
+}
+
 fn is_appendix_heading(text: &str, cfg: &Config) -> bool {
     let t = text.trim().to_uppercase();
     if let Some(app) = cfg
@@ -379,7 +383,7 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
     for child in node.children() {
         let v = child.data.borrow().value.clone();
         match v {
-            NodeValue::Text(t) => out.push_str(&linkify_text(&t)),
+            NodeValue::Text(t) => out.push_str(&linkify_text(&normalize_dashes(&t))),
             NodeValue::Code(c) => {
                 if c.literal.starts_with('\\') {
                     out.push_str(&c.literal);
