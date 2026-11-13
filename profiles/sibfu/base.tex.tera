@@ -59,6 +59,7 @@
 \usepackage{xltabular}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 \renewcommand{\arraystretch}{1.2}
+\setlength{\doublerulesep}{1.5pt}
 \usepackage{amsmath,amssymb}
 \usepackage{caption}
 \usepackage{xcolor}

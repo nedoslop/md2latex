@@ -739,14 +739,12 @@ fn render_image_inline(link: &NodeLink, out: &mut String, cfg: &Config) {
     // Default width for inline images: the current line/container width.
     let (_, width, _) = parse_image_title(&link.title, "\\linewidth");
 
-    let width_spec = if width.contains("\\textwidth")
-        || width.contains("\\linewidth")
-        || width.contains('%')
-    {
-        width
-    } else {
-        format!("{}\\linewidth", width)
-    };
+    let width_spec =
+        if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') {
+            width
+        } else {
+            format!("{}\\linewidth", width)
+        };
     let interpolate_opt = if cfg.images.interpolate {
         ",interpolate=true"
     } else {
@@ -811,8 +809,15 @@ fn render_table<'a>(
     if rows.is_empty() {
         return Ok(());
     }
-    let ncols = rows[0].len().max(1);
+    let ncols = rows.first().map(|r| r.len()).unwrap_or(1).max(1);
     let baseline = compute_baseline(&cfg.style.table_font_size);
+
+    let mut gap_cells =
+        vec!["\\omit\\vrule width\\arrayrulewidth height\\doublerulesep\\hfil".to_string(); ncols];
+    if let Some(last) = gap_cells.last_mut() {
+        last.push_str("\\vrule width\\arrayrulewidth height\\doublerulesep");
+    }
+    let header_sep = format!("\\hline\n  {} \\\\\n  \\hline", gap_cells.join(" & "));
 
     let (caption_latex, label_latex, breakable, new_page) = match meta {
         Some(m) => (
@@ -863,11 +868,11 @@ fn render_table<'a>(
 
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
-        out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
+        out.push_str(&format!(" \\\\\n  {}\n  \\endfirsthead\n", header_sep));
 
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
-        out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
+        out.push_str(&format!(" \\\\\n  {}\n  \\endhead\n", header_sep));
 
         out.push_str("  \\endfoot\n");
         out.push_str("  \\endlastfoot\n");
@@ -912,7 +917,7 @@ fn render_table<'a>(
                 let bold: Vec<String> = row.iter().map(|c| format!("\\textbf{{{}}}", c)).collect();
                 out.push_str("    ");
                 out.push_str(&bold.join(" & "));
-                out.push_str(" \\\\\n  \\hline\\hline\n");
+                out.push_str(&format!(" \\\\\n  {}\n", header_sep));
             } else {
                 out.push_str("    ");
                 out.push_str(&row.join(" & "));
