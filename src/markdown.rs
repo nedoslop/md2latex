@@ -24,7 +24,8 @@ pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let mut options = ComrakOptions::default();
     options.extension.table = true;
     options.extension.footnotes = true;
-    options.extension.strikethrough = true;
+    // Отключаем встроенный strikethrough, чтобы самим обрабатывать ~ и ~~
+    options.extension.strikethrough = false;
     options.extension.tasklist = true;
     options.extension.math_dollars = true;
     options.extension.superscript = true;
@@ -455,24 +456,11 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
     Ok(())
 }
 
-fn linkify_text(text: &str) -> String {
-    let re = Regex::new(r"https?://[^\s\)\]\}]+").unwrap();
-    let mut out = String::new();
-    let mut last = 0;
-    for m in re.find_iter(text) {
-        out.push_str(&escape_latex(&text[last..m.start()]));
-        out.push_str(&format!("\\url{{{}}}", m.as_str()));
-        last = m.end();
-    }
-    out.push_str(&escape_latex(&text[last..]));
-    out
-}
-
 fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> Result<()> {
     for child in node.children() {
         let v = child.data.borrow().value.clone();
         match v {
-            NodeValue::Text(t) => out.push_str(&linkify_text(&normalize_dashes(&t))),
+            NodeValue::Text(t) => out.push_str(&render_text_node(&t)),
             NodeValue::Code(c) => {
                 if c.literal.starts_with('\\') {
                     out.push_str(&c.literal);
@@ -527,6 +515,70 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
         }
     }
     Ok(())
+}
+
+/// Обрабатывает текст: сначала защищает URL, затем парсит тильды.
+fn render_text_node(text: &str) -> String {
+    let normalized = normalize_dashes(text);
+    let re = Regex::new(r"https?://[^\s\)\]\}]+").unwrap();
+    let mut out = String::new();
+    let mut last = 0;
+
+    for m in re.find_iter(&normalized) {
+        out.push_str(&parse_tildes(&normalized[last..m.start()]));
+        out.push_str(&format!("\\url{{{}}}", m.as_str()));
+        last = m.end();
+    }
+    out.push_str(&parse_tildes(&normalized[last..]));
+    out
+}
+
+/// Парсит `~~текст~~` как зачёркивание, а `~текст~` как нижний индекс.
+fn parse_tildes(text: &str) -> String {
+    let mut result = String::new();
+    let mut remaining = text;
+
+    while let Some(start) = remaining.find('~') {
+        result.push_str(&escape_latex(&remaining[..start]));
+
+        let after = &remaining[start..];
+
+        if after.starts_with("~~") {
+            if let Some(end) = after[2..].find("~~") {
+                let content = &after[2..2 + end];
+                if content.is_empty() {
+                    result.push_str("\\textasciitilde{}\\textasciitilde{}");
+                    remaining = &after[2..];
+                } else {
+                    result.push_str("\\sout{");
+                    result.push_str(&escape_latex(content));
+                    result.push('}');
+                    remaining = &after[2 + end + 2..];
+                }
+            } else {
+                result.push_str("\\textasciitilde{}\\textasciitilde{}");
+                remaining = &after[2..];
+            }
+        } else {
+            if let Some(end) = after[1..].find('~') {
+                let content = &after[1..1 + end];
+                if content.is_empty() {
+                    result.push_str("\\textasciitilde{}");
+                    remaining = &after[1..];
+                } else {
+                    result.push_str("\\textsubscript{");
+                    result.push_str(&escape_latex(content));
+                    result.push('}');
+                    remaining = &after[1 + end + 1..];
+                }
+            } else {
+                result.push_str("\\textasciitilde{}");
+                remaining = &after[1..];
+            }
+        }
+    }
+    result.push_str(&escape_latex(remaining));
+    result
 }
 
 fn render_image<'a>(
@@ -701,12 +753,12 @@ fn render_table<'a>(
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
 
-        // 2. Шапка последующих страниц (только заголовки столбцов; текст "Продолжение/Окончание" добавляет \LT@print@head)
+        // 2. Шапка последующих страниц
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
 
-        // 3. Подвал промежуточных страниц (пустой, чтобы не дублировать линию)
+        // 3. Подвал промежуточных страниц
         out.push_str("  \\endfoot\n");
 
         // 4. Подвал последней страницы
@@ -848,8 +900,8 @@ fn escape_latex(s: &str) -> String {
             '{' => out.push_str("\\{"),
             '}' => out.push_str("\\}"),
             '\\' => out.push_str("\\textbackslash{}"),
-            '^' => out.push_str("\\textasciicircum{}"), // <-- ДОБАВЛЕНО
-            '~' => out.push_str("\\textasciitilde{}"),  // <-- ДОБАВЛЕНО
+            '^' => out.push_str("\\textasciicircum{}"),
+            '~' => out.push_str("\\textasciitilde{}"),
             _ => out.push(ch),
         }
     }
