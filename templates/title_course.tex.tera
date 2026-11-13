@@ -2,11 +2,7 @@
 \thispagestyle{empty}
 \setlength{\parindent}{0pt}
 \begin{singlespace}
-
-% Сдвиг на -10mm компенсирует разницу полей (30mm слева, 10mm справа),
-% чтобы центрированные блоки стояли строго по центру физического листа A4.
 \begin{center}
-\hspace*{-20mm}\parbox{\textwidth}{\centering
 {\fontsize{14pt}{16.8pt}\selectfont
 Министерство науки и высшего образования РФ\par}
 {\fontsize{12pt}{14.4pt}\selectfont
@@ -31,13 +27,11 @@
 \rule{12cm}{0.4pt}\par
 {% endif %}
 {\fontsize{10pt}{12pt}\selectfont кафедра\par}
-}
 \end{center}
 
 \vspace{1.8cm}
 
 \begin{center}
-\hspace*{-20mm}\parbox{\textwidth}{\centering
 {\fontsize{14pt}{16.8pt}\selectfont\bfseries {{ doc_kind }}\par}
 
 \vspace{0.8cm}
@@ -45,12 +39,10 @@
 {\fontsize{14pt}{16.8pt}\selectfont {{ topic }}\par}
 \vspace{0.1cm}
 {\fontsize{10pt}{12pt}\selectfont тема проекта (работы)\par}
-}
 \end{center}
 
 \vspace{1.8cm}
 
-% ── Руководитель и студенты (по границам текстового поля 30мм / 10мм) ──
 \noindent
 \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} l l c l @{}}
 {\fontsize{14pt}{16.8pt}\selectfont Руководитель} &
@@ -91,9 +83,7 @@
 \vfill
 
 \begin{center}
-\hspace*{-20mm}\parbox{\textwidth}{\centering
 {\fontsize{14pt}{16.8pt}\selectfont {{ city }} {{ year }}\par}
-}
 \end{center}
 \end{singlespace}
 \end{titlepage}

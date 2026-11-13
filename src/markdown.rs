@@ -365,9 +365,9 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
 
     out.push_str(&format!(
         "\\phantomsection\n\
-             \\addcontentsline{{toc}}{{section}}{{{}}}\n\
-             {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n\
-             \\vspace{{\\baselineskip}}\n\n",
+         \\addcontentsline{{toc}}{{section}}{{{}}}\n\
+         {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n\
+         \\vspace{{\\baselineskip}}\n\n",
         escape_latex(&display),
         escape_latex(&display)
     ));
