@@ -72,7 +72,6 @@ fn render_node<'a>(
     match value {
         NodeValue::Heading(h) => {
             let raw_text = extract_text(node);
-            // Убираем номер в начале и точку в конце (по СТУ точки в заголовках запрещены)
             let clean = strip_heading_number(&raw_text)
                 .trim_end_matches('.')
                 .to_string();
@@ -83,18 +82,13 @@ fn render_node<'a>(
                         out.push_str("\\clearpage\n");
                     }
                     let upper = clean.trim().to_uppercase();
-
                     *in_bibliography =
                         upper == cfg.style.bibliography_heading.trim().to_uppercase();
                     *skip_next_section_pagebreak =
                         upper == cfg.style.main_part_heading.trim().to_uppercase();
 
                     let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
-                    *ctx = if unnumbered {
-                        Ctx::StructuralUnnumbered
-                    } else {
-                        Ctx::StructuralNumbered
-                    };
+                    *ctx = if unnumbered { Ctx::StructuralUnnumbered } else { Ctx::StructuralNumbered };
                     if is_appendix_heading(&clean, cfg) {
                         *ctx = Ctx::Appendix;
                         render_appendix_heading(&clean, out, cfg)?;
@@ -115,7 +109,6 @@ fn render_node<'a>(
                 }
 
                 if *ctx == Ctx::StructuralUnnumbered {
-                    // Без ручного \indent! Новый абзац в LaTeX сам начинается с \parindent (12.5мм)
                     out.push_str(&format!(
                         "\\textbf{{{}}}\\par\n\n",
                         escape_latex(&to_title_case_if_upper(&clean))
@@ -146,9 +139,9 @@ fn render_node<'a>(
                     if !numbered {
                         let toc_cmd = cmd.trim_end_matches('*');
                         out.push_str(&format!(
-                                    "\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n\n",
-                                    toc_cmd, escape_latex(&display), cmd, escape_latex(&display)
-                                ));
+                            "\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n\n",
+                            toc_cmd, escape_latex(&display), cmd, escape_latex(&display)
+                        ));
                     } else {
                         out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(&display)));
                     }
@@ -215,31 +208,8 @@ fn render_node<'a>(
                 code.literal.trim_end()
             ));
         }
-        NodeValue::List(list) => {
-            let is_ordered = list.list_type == comrak::nodes::ListType::Ordered;
-            let env = if is_ordered { "enumerate" } else { "itemize" };
-
-            // Метка для данного конкретного списка
-            let label_opt = if is_ordered && *in_bibliography {
-                format!("[label={}]", cfg.lists.bibliography_label)
-            } else {
-                String::new()
-            };
-
-            out.push_str(&format!("\\begin{{{}}}{}\n", env, label_opt));
-            for child in node.children() {
-                if let NodeValue::Item(_) = &child.data.borrow().value {
-                    let mut item = String::new();
-                    for (idx, block) in child.children().enumerate() {
-                        if idx > 0 {
-                            item.push(' ');
-                        }
-                        render_inline(block, &mut item, cfg)?;
-                    }
-                    out.push_str(&format!("  \\item {}\n", item.trim()));
-                }
-            }
-            out.push_str(&format!("\\end{{{}}}\n\n", env));
+        NodeValue::List(_) => {
+            render_list(node, out, cfg, *in_bibliography)?;
         }
         NodeValue::Table(_) => {
             let meta = pending.take();
@@ -275,6 +245,70 @@ fn render_node<'a>(
             }
         }
     }
+    Ok(())
+}
+
+// ── Списки: рекурсивный рендер (включая вложенные) ───────────────────────
+fn render_list<'a>(
+    node: &'a AstNode<'a>,
+    out: &mut String,
+    cfg: &Config,
+    in_bibliography: bool,
+) -> Result<()> {
+    let list_data = match &node.data.borrow().value {
+        NodeValue::List(l) => l.clone(),
+        _ => return Ok(()),
+    };
+    let is_ordered = list_data.list_type == comrak::nodes::ListType::Ordered;
+    let env = if is_ordered { "enumerate" } else { "itemize" };
+
+    let label_opt = if is_ordered && in_bibliography {
+        format!("[label={}]", cfg.lists.bibliography_label)
+    } else {
+        String::new()
+    };
+
+    out.push_str(&format!("\\begin{{{}}}{}\n", env, label_opt));
+
+    for item_node in node.children() {
+        if !matches!(&item_node.data.borrow().value, NodeValue::Item(_)) {
+            continue;
+        }
+
+        out.push_str("  \\item ");
+
+        let mut first_block = true;
+        for block in item_node.children() {
+            let bv = block.data.borrow().value.clone();
+            match &bv {
+                NodeValue::Paragraph => {
+                    if !first_block {
+                        out.push('\n');
+                    }
+                    let mut p = String::new();
+                    render_inline(block, &mut p, cfg)?;
+                    out.push_str(p.trim());
+                    first_block = false;
+                }
+                NodeValue::List(_) => {
+                    out.push('\n');
+                    render_list(block, out, cfg, in_bibliography)?;
+                    first_block = false;
+                }
+                _ => {
+                    if !first_block {
+                        out.push('\n');
+                    }
+                    let mut p = String::new();
+                    render_inline(block, &mut p, cfg)?;
+                    out.push_str(p.trim());
+                    first_block = false;
+                }
+            }
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("\\end{{{}}}\n\n", env));
     Ok(())
 }
 
@@ -318,7 +352,6 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
     let trimmed = text.trim();
     let prefix_upper = cfg.style.appendix_prefix.trim().to_uppercase();
 
-    // Регистронезависимо срезаем префикс
     let rest = if trimmed.len() >= prefix_upper.len()
         && trimmed[..prefix_upper.len()].to_uppercase() == prefix_upper
     {
@@ -350,9 +383,7 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
          \\renewcommand{{\\theequation}}{{{}.\\arabic{{equation}}}}\n\
          {{\\centering\\textbf{{{}}}\\par}}\n",
         escape_latex(&toc_entry),
-        letter,
-        letter,
-        letter,
+        letter, letter, letter,
         escape_latex(&app_label)
     ));
 

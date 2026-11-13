@@ -32,7 +32,7 @@
   \newfontfamily\cyrillicfonttt{TeX Gyre Cursor}
 }
 
-% ========== Выравнивание правого края и переносы ==========
+% ========== Переносы строк ==========
 \usepackage[protrusion=true,expansion=false]{microtype}
 {% if lb_sloppy %}\sloppy{% endif %}
 \emergencystretch={{ lb_emergencystretch }}
@@ -61,7 +61,7 @@
 \usepackage{caption}
 \usepackage{xcolor}
 
-% ========== Подписи (СТУ 7.8.3, 7.7.3) ==========
+% ========== Подписи ==========
 \DeclareCaptionLabelSeparator{stu}{~\textendash~}
 \captionsetup[figure]{
   labelsep=stu,
@@ -81,22 +81,28 @@
   indention=0pt
 }
 
-% ========== Списки (СТУ 7.4.3) ==========
+% ========== Списки: уровневые отступы ==========
 \usepackage{enumitem}
+
 \setlist[itemize]{
-  label={{ itemize_label }},
-  wide=\parindent,
-  leftmargin=0pt,
+  label=\textendash,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
+\setlist[itemize,1]{leftmargin={{ paragraph_indent | trim }}}
+\setlist[itemize,2]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+0.5cm\relax}
+\setlist[itemize,3]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+1cm\relax}
+\setlist[itemize,4]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+1.5cm\relax}
+
 \setlist[enumerate]{
   label={{ enumerate_label }},
-  wide=\parindent,
-  leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
+\setlist[enumerate,1]{leftmargin={{ paragraph_indent | trim }}}
+\setlist[enumerate,2]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+0.5cm\relax}
+\setlist[enumerate,3]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+1cm\relax}
+\setlist[enumerate,4]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+1.5cm\relax}
 
 % ========== Перенумерация ==========
 {% if numbering == "within_section" %}
@@ -118,24 +124,21 @@
   \renewcommand{\headrulewidth}{0pt}
 }
 
-% ========== Заголовки разделов (СТУ 7.3) ==========
+% ========== Заголовки разделов ==========
 \usepackage[indentafter]{titlesec}
 
-% Разделы: с абзацного отступа (12.5мм), полужирный, без переносов, интервал после - 1 пустая строка (15мм / \baselineskip)
 \titleformat{\section}[block]
   {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
   {\hspace{\parindent}\thesection}{0.5em}
   {}
 \titlespacing*{\section}{0pt}{0pt}{\baselineskip}
 
-% Подразделы: с абзацного отступа (12.5мм), полужирный, интервал до и после - 1 пустая строка
 \titleformat{\subsection}[block]
   {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
   {\hspace{\parindent}\thesubsection}{0.5em}
   {}
 \titlespacing*{\subsection}{0pt}{\baselineskip}{\baselineskip}
 
-% Пункты: с абзацного отступа (12.5мм), полужирный
 \titleformat{\subsubsection}[block]
   {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
   {\hspace{\parindent}\thesubsubsection}{0.5em}
@@ -156,32 +159,11 @@
 \setlength{\cftbeforesubsecskip}{2pt}
 \renewcommand{\cftdotsep}{1.5}
 
-% Делаем точки (leaders) в содержании частью кликабельной ссылки hyperref
-{% if toc_clickable_dots %}
-{% raw %}
-\makeatletter
-\let\old@contentsline\contentsline
-\renewcommand{\contentsline}[4]{%
-  \old@contentsline{#1}{\hyperlink{#4}{#2}}{\hyperlink{#4}{#3}}{#4}%
-}
-\renewcommand{\cftdotfill}[1]{%
-  \def\@tempa{#1}%
-  \def\@tempb{\cftnodots}%
-  \ifx\@tempa\@tempb
-    \hfill
-  \else
-    \leaders\hbox{$\m@th\mkern #1 mu\hbox{\cftdot}\mkern #1 mu$}\hfill
-  \fi
-}
-\makeatother
-{% endraw %}
-{% endif %}
-
 % ========== Ссылки ==========
 {% if links_colored %}
-\usepackage[breaklinks=true]{hyperref}
+\usepackage[breaklinks=true,linktoc=all]{hyperref}
 {% else %}
-\usepackage[breaklinks=true,hidelinks]{hyperref}
+\usepackage[breaklinks=true,hidelinks,linktoc=all]{hyperref}
 {% endif %}
 \hypersetup{
   colorlinks={% if links_colored %}true{% else %}false{% endif %},
@@ -197,6 +179,36 @@
 }
 \urlstyle{same}
 \usepackage{xurl}
+
+% ========== Кликабельные точки в содержании ==========
+% \hyperlink обёрнут в \hbox{} и вынесен из математического режима,
+% иначе PDF-аннотация не создаётся корректно.
+{% if toc_clickable_dots %}
+{% raw %}
+\makeatletter
+\gdef\@toclinktarget{}
+\let\old@contentsline\contentsline
+\renewcommand{\contentsline}[4]{%
+  \gdef\@toclinktarget{#4}%
+  \old@contentsline{#1}{#2}{#3}{#4}%
+  \global\let\@toclinktarget\@empty
+}
+\renewcommand{\cftdotfill}[1]{%
+  \def\@tempa{#1}%
+  \def\@tempb{\cftnodots}%
+  \ifx\@tempa\@tempb
+    \hfill
+  \else
+    \ifx\@toclinktarget\@empty
+      \leaders\hbox{$\m@th\mkern #1 mu\hbox{\cftdot}\mkern #1 mu$}\hfill
+    \else
+      \leaders\hbox{$\m@th\mkern #1 mu\hbox{\hyperlink{\@toclinktarget}{\cftdot}}\mkern #1 mu$}\hfill
+    \fi
+  \fi
+}
+\makeatother
+{% endraw %}
+{% endif %}
 
 {% if use_biblatex %}
 \usepackage[style=gost-numeric,sorting=none]{biblatex}

@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::config::{Config, Student};
 use anyhow::{Context, Result};
 use std::fs;
 use tera::{Context as TeraContext, Tera};
@@ -23,7 +23,7 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("title_page", &title_rendered);
     ctx.insert("body", body);
 
-    // ── Style ────────────────────────────────────────────────────────
+    // Style
     ctx.insert("font", &cfg.style.font);
     ctx.insert("font_fallback", &cfg.style.font_fallback);
     ctx.insert("font_size", &cfg.style.font_size);
@@ -49,7 +49,7 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("subsection_before_skip", &cfg.style.subsection_before_skip);
     ctx.insert("subsection_after_skip", &cfg.style.subsection_after_skip);
 
-    // ── Links ───────────────────────────────────────────────────────
+    // Links
     ctx.insert("links_colored", &cfg.links.colored);
     ctx.insert("links_link_color", &cfg.links.link_color);
     ctx.insert("links_cite_color", &cfg.links.cite_color);
@@ -58,41 +58,52 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
 
     ctx.insert("images_interpolate", &cfg.images.interpolate);
 
-    // ── Biblatex ────────────────────────────────────────────────────
+    // Biblatex
     ctx.insert("use_biblatex", &cfg.bibliography.use_biblatex);
     ctx.insert(
         "bib_file",
         &cfg.project.bib_file.clone().unwrap_or_else(|| "refs.bib".into()),
     );
 
-    // ── Списки ──────────────────────────────────────────────────────
+    // Lists
     ctx.insert("itemize_label", &cfg.lists.itemize_label);
     ctx.insert("enumerate_label", &cfg.lists.enumerate_label);
 
-    // ── TOC ─────────────────────────────────────────────────────────
+    // TOC
     ctx.insert("toc_clickable_dots", &cfg.toc.clickable_dots);
 
-    // ── Переносы строк ──────────────────────────────────────────────
+    // Line breaking
     ctx.insert("lb_sloppy", &cfg.line_breaking.sloppy);
     ctx.insert("lb_hyphen_penalty", &cfg.line_breaking.hyphen_penalty);
     ctx.insert("lb_exhyphen_penalty", &cfg.line_breaking.exhyphen_penalty);
     ctx.insert("lb_emergencystretch", &cfg.line_breaking.emergencystretch);
     ctx.insert("lb_tolerance", &cfg.line_breaking.tolerance);
 
-    // ── Title meta ─────────────────────────────────────────────────
+    // Title meta
     ctx.insert("topic", &cfg.title.topic);
-    ctx.insert(
-        "student_author",
-        &fill_or_blank(&cfg.title.student, cfg.style.title_page_fill_empty),
-    );
+    ctx.insert("student_author", &collect_author(&cfg.title));
 
     tera.render("base.tex.tera", &ctx)
         .context("Ошибка рендеринга base.tex.tera")
 }
 
+fn collect_author(t: &crate::config::Title) -> String {
+    if !t.student.trim().is_empty() {
+        return t.student.clone();
+    }
+    let names: Vec<String> = t
+        .students
+        .iter()
+        .map(|s| s.name.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .collect();
+    names.join(", ")
+}
+
 fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     let t = &cfg.title;
     let fill = cfg.style.title_page_fill_empty;
+
     ctx.insert("university", &t.university);
     ctx.insert("institute", &t.institute);
     ctx.insert("department", &t.department);
@@ -100,9 +111,41 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     ctx.insert("direction_code", &t.direction_code);
     ctx.insert("direction_name", &t.direction_name);
     ctx.insert("topic", &t.topic);
+
+    // legacy single student
     ctx.insert("student", &fill_or_blank(&t.student, fill));
     ctx.insert("student_id", &t.student_id);
     ctx.insert("group", &fill_or_blank(&t.group, fill));
+
+    // new: normalized students list (always at least 1 entry)
+    let students_ctx: Vec<Student> = if !t.students.is_empty() {
+        t.students
+            .iter()
+            .map(|s| Student {
+                name: fill_or_blank(&s.name, fill),
+                group: s.group.clone(),
+                student_id: s.student_id.clone(),
+            })
+            .collect()
+    } else if !t.student.trim().is_empty()
+        || !t.group.trim().is_empty()
+        || !t.student_id.trim().is_empty()
+    {
+        vec![Student {
+            name: fill_or_blank(&t.student, fill),
+            group: t.group.clone(),
+            student_id: t.student_id.clone(),
+        }]
+    } else {
+        // пустая строка — для рукописного заполнения на распечатке
+        vec![Student {
+            name: if fill { "________".into() } else { String::new() },
+            group: String::new(),
+            student_id: String::new(),
+        }]
+    };
+    ctx.insert("students", &students_ctx);
+
     ctx.insert("supervisor", &fill_or_blank(&t.supervisor, fill));
     ctx.insert("supervisor_title", &fill_or_blank(&t.supervisor_title, fill));
     ctx.insert("reviewer", &fill_or_blank(&t.reviewer, fill));

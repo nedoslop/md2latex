@@ -1,6 +1,6 @@
 \begin{titlepage}
 \thispagestyle{empty}
-\begin{singlespace} % Обязательно одинарный интервал для титульного листа!
+\begin{singlespace}
 \begin{center}
 {\fontsize{14pt}{16.8pt}\selectfont
 Министерство науки и высшего образования РФ\\}
@@ -42,10 +42,10 @@
 
 \vspace{1.8cm}
 
+% ── Руководитель (по Приложению И: без должности / степени) ──────────────
 \noindent
-\begin{tabularx}{\textwidth}{@{} l X c @{\hspace{1cm}} l @{}}
+\begin{tabular}{@{} l l l @{}}
 {\fontsize{14pt}{16.8pt}\selectfont Руководитель} &
-&
 \begin{tabular}[t]{@{}c@{}}
   \rule{3.5cm}{0.4pt}\\
   {\fontsize{10pt}{12pt}\selectfont подпись, дата}
@@ -53,22 +53,47 @@
 \begin{tabular}[t]{@{}l@{}}
   {\fontsize{14pt}{16.8pt}\selectfont {{ supervisor }}}\\
   {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
-\end{tabular} \\[1.5cm]
+\end{tabular} \\
+\end{tabular}
 
+\vspace{1.2cm}
+
+% ── Студенты (может быть несколько) ──────────────────────────────────────
+{% for s in students %}
+{% if s.group | trim != "" or s.student_id | trim != "" %}
+\noindent
+\begin{tabular}{@{} l l l l @{}}
+{\fontsize{14pt}{16.8pt}\selectfont Студент} &
 \begin{tabular}[t]{@{}l@{}}
-  {\fontsize{14pt}{16.8pt}\selectfont Студент{% if group | trim != "" %} {{ group }}{% endif %}{% if student_id | trim != "" %}, {{ student_id }}{% endif %}}\\
-  {\fontsize{10pt}{12pt}\selectfont номер группы, зачетной книжки}
+  {\fontsize{14pt}{16.8pt}\selectfont {% if s.group | trim != "" %}{{ s.group }}{% endif %}{% if s.group | trim != "" and s.student_id | trim != "" %}, {% endif %}{% if s.student_id | trim != "" %}{{ s.student_id }}{% endif %}}\\
+  {\fontsize{10pt}{12pt}\selectfont номер группы,}\\
+  {\fontsize{10pt}{12pt}\selectfont зачетной книжки}
 \end{tabular} &
-&
 \begin{tabular}[t]{@{}c@{}}
   \rule{3.5cm}{0.4pt}\\
   {\fontsize{10pt}{12pt}\selectfont подпись, дата}
 \end{tabular} &
 \begin{tabular}[t]{@{}l@{}}
-  {\fontsize{14pt}{16.8pt}\selectfont {{ student }}}\\
+  {\fontsize{14pt}{16.8pt}\selectfont {{ s.name }}}\\
   {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
 \end{tabular} \\
-\end{tabularx}
+\end{tabular}
+{% else %}
+\noindent
+\begin{tabular}{@{} l l l @{}}
+{\fontsize{14pt}{16.8pt}\selectfont Студент} &
+\begin{tabular}[t]{@{}c@{}}
+  \rule{3.5cm}{0.4pt}\\
+  {\fontsize{10pt}{12pt}\selectfont подпись, дата}
+\end{tabular} &
+\begin{tabular}[t]{@{}l@{}}
+  {\fontsize{14pt}{16.8pt}\selectfont {{ s.name }}}\\
+  {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
+\end{tabular} \\
+\end{tabular}
+{% endif %}
+{% if not loop.last %}\par\vspace{0.8cm}{% endif %}
+{% endfor %}
 
 \vfill
 

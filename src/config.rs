@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -43,9 +43,7 @@ pub struct Style {
 
     #[serde(default = "default_true")] pub title_page_fill_empty: bool,
 
-    /// Список структурных элементов (пусто = взять дефолтный набор).
     #[serde(default)] pub structural_headings: Vec<String>,
-    /// Явный список «без номера» (пусто = вывести из structural_headings минус main_part).
     #[serde(default)] pub structural_headings_unnumbered_subsections: Vec<String>,
     #[serde(default = "default_true")]  pub structural_headings_newpage: bool,
     #[serde(default = "default_true")]  pub section_bold: bool,
@@ -68,9 +66,8 @@ pub struct Style {
     #[serde(default = "default_subsection_before_skip")] pub subsection_before_skip: String,
     #[serde(default = "default_subsection_after_skip")]  pub subsection_after_skip: String,
 
-    // ── Убираем хардкоды ────────────────────────────────────────────────
-    #[serde(default = "default_appendix_prefix")]  pub appendix_prefix: String,
-    #[serde(default = "default_main_part_heading")] pub main_part_heading: String,
+    #[serde(default = "default_appendix_prefix")]      pub appendix_prefix: String,
+    #[serde(default = "default_main_part_heading")]    pub main_part_heading: String,
     #[serde(default = "default_bibliography_heading")] pub bibliography_heading: String,
 }
 
@@ -141,6 +138,14 @@ impl Style {
     }
 }
 
+// ── Student ─────────────────────────────────────────────────────────────
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct Student {
+    #[serde(default)] pub name: String,
+    #[serde(default)] pub group: String,
+    #[serde(default)] pub student_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Title {
     pub university: String,
@@ -150,9 +155,15 @@ pub struct Title {
     pub direction_code: String,
     pub direction_name: String,
     pub topic: String,
-    pub student: String,
+
+    // legacy single student (optional)
+    #[serde(default)] pub student: String,
     #[serde(default)] pub student_id: String,
-    pub group: String,
+    #[serde(default)] pub group: String,
+
+    // new: multiple students (overrides legacy if non-empty)
+    #[serde(default)] pub students: Vec<Student>,
+
     pub supervisor: String,
     pub supervisor_title: String,
     #[serde(default)] pub reviewer: String,
@@ -167,7 +178,7 @@ pub struct Bibliography {
 
 #[derive(Debug, Deserialize)]
 pub struct Links {
-    #[serde(default = "default_true")]     pub colored: bool,
+    #[serde(default = "default_true")]       pub colored: bool,
     #[serde(default = "default_link_color")] pub link_color: String,
     #[serde(default = "default_cite_color")] pub cite_color: String,
     #[serde(default = "default_url_color")]  pub url_color: String,
@@ -193,7 +204,6 @@ impl Default for Images {
     fn default() -> Self { Self { interpolate: true, convert_to: None, dpi: 300 } }
 }
 
-// ── Списки/перечисления ─────────────────────────────────────────────────
 #[derive(Debug, Deserialize)]
 pub struct Lists {
     #[serde(default = "default_itemize_label")]     pub itemize_label: String,
@@ -213,14 +223,13 @@ impl Default for Lists {
     }
 }
 
-// ── Шаблоны (рантайм, без include_str!) ─────────────────────────────────
 #[derive(Debug, Deserialize)]
 pub struct Templates {
-    #[serde(default = "default_templates_dir")]    pub dir: String,
-    #[serde(default = "default_base_template")]    pub base: String,
-    #[serde(default = "default_title_course")]     pub title_course: String,
-    #[serde(default = "default_title_bachelor")]   pub title_bachelor: String,
-    #[serde(default = "default_title_master")]     pub title_master: String,
+    #[serde(default = "default_templates_dir")]  pub dir: String,
+    #[serde(default = "default_base_template")]  pub base: String,
+    #[serde(default = "default_title_course")]   pub title_course: String,
+    #[serde(default = "default_title_bachelor")] pub title_bachelor: String,
+    #[serde(default = "default_title_master")]   pub title_master: String,
 }
 fn default_templates_dir() -> String { "templates".into() }
 fn default_base_template() -> String { "base.tex.tera".into() }
@@ -251,7 +260,6 @@ impl Templates {
     }
 }
 
-// ── Содержание ──────────────────────────────────────────────────────────
 #[derive(Debug, Deserialize)]
 pub struct Toc {
     #[serde(default = "default_true")] pub clickable_dots: bool,
@@ -260,7 +268,6 @@ impl Default for Toc {
     fn default() -> Self { Self { clickable_dots: true } }
 }
 
-// ── Переносы строк ──────────────────────────────────────────────────────
 #[derive(Debug, Deserialize)]
 pub struct LineBreaking {
     #[serde(default = "default_hyphen_penalty")]   pub hyphen_penalty: i32,
@@ -292,7 +299,6 @@ impl Config {
         let mut cfg: Config = toml::from_str(&raw)
             .with_context(|| "Некорректный TOML-конфиг")?;
 
-        // Делаем относительные пути к шаблонам относительными конфигу (а не CWD).
         let cfg_dir = path.parent().unwrap_or_else(|| Path::new("."));
         if !Path::new(&cfg.templates.dir).is_absolute() {
             cfg.templates.dir = cfg_dir.join(&cfg.templates.dir)
