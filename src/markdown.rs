@@ -180,13 +180,23 @@ fn render_node<'a>(
                 let mut new_page = false;
 
                 for token in after.split_whitespace() {
-                    if label.is_none() && !token.contains('=') && token != "breakable" && token != "new_page" {
+                    if label.is_none()
+                        && !token.contains('=')
+                        && token != "breakable"
+                        && token != "new_page"
+                    {
                         label = Some(format!("tbl:{}", token));
                     } else if token == "breakable=false" || token == "breakable=0" {
                         breakable = false;
-                    } else if token == "breakable=true" || token == "breakable=1" || token == "breakable" {
+                    } else if token == "breakable=true"
+                        || token == "breakable=1"
+                        || token == "breakable"
+                    {
                         breakable = true;
-                    } else if token == "new_page=true" || token == "new_page=1" || token == "new_page" {
+                    } else if token == "new_page=true"
+                        || token == "new_page=1"
+                        || token == "new_page"
+                    {
                         new_page = true;
                     } else if token == "new_page=false" || token == "new_page=0" {
                         new_page = false;
@@ -195,7 +205,12 @@ fn render_node<'a>(
                     }
                 }
                 let caption = caption_tokens.join(" ");
-                *pending = Some(PendingTableCaption { label, caption, breakable, new_page });
+                *pending = Some(PendingTableCaption {
+                    label,
+                    caption,
+                    breakable,
+                    new_page,
+                });
                 return Ok(());
             }
 
@@ -643,6 +658,7 @@ fn render_table<'a>(
         if new_page {
             out.push_str("\\clearpage\n");
         }
+        out.push_str("  \\stepcounter{ltid}\n");
         out.push_str(&format!(
             "  {{\\fontsize{{{}}}{{{}}}\\selectfont\n",
             cfg.style.table_font_size, baseline
@@ -656,45 +672,61 @@ fn render_table<'a>(
             cap_line.push_str(&format!("\\caption{{{}}}", caption_latex));
         }
         if !label_latex.is_empty() {
-            if !cap_line.is_empty() { cap_line.push(' '); }
+            if !cap_line.is_empty() {
+                cap_line.push(' ');
+            }
             cap_line.push_str(&format!("\\label{{{}}}", label_latex));
         }
         if !cap_line.is_empty() {
             out.push_str(&format!("  {} \\\\\n", cap_line));
         }
 
-        let bold: Vec<String> = rows[0]
-            .iter()
-            .map(|c| format!("\\textbf{{{}}}", c))
-            .collect();
+        let bold: Vec<String> = rows
+            .first()
+            .map(|r| r.iter().map(|c| format!("\\textbf{{{}}}", c)).collect())
+            .unwrap_or_default();
 
-        // Первая страница
+        // Шапка первой страницы
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
 
-        // Последующие страницы
+        // Шапка последующих страниц ("Продолжение таблицы" или "Окончание таблицы")
         out.push_str(&format!(
-            "  \\multicolumn{{{}}}{{@{{}}l@{{}}}}{{\\fontsize{{{}}}{{{}}}\\selectfont {} \\thetable}} \\\\\n",
-            ncols, cfg.style.caption_font_size, cap_baseline, cfg.labels.table_continued
+            "  \\multicolumn{{{}}}{{@{{}}l@{{}}}}{{\\fontsize{{{}}}{{{}}}\\selectfont \\ltHeaderText{{{}}}{{{}}}{{\\thetable}}}} \\\\\n",
+            ncols,
+            cfg.style.caption_font_size,
+            cap_baseline,
+            escape_latex(&cfg.labels.table_continued),
+            escape_latex(&cfg.labels.table_ended)
         ));
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
 
-        // Линия для промежуточных страниц
-        out.push_str("  \\hline\n  \\endfoot\n");
-        
-        // НЕ ставим \hline в \endlastfoot — это вызывает дублирование линии
+        // Подвал промежуточных страниц: пустой, чтобы не дублировать \hline строки
+        out.push_str("  \\endfoot\n");
+
+        // Подвал последней страницы
         out.push_str("  \\endlastfoot\n");
 
-        // Данные: \hline после КАЖДОЙ строки (включая последнюю)
-        for row in rows.iter().skip(1) {
+        // Строки данных
+        let data_rows: Vec<_> = rows.iter().skip(1).collect();
+        let last_idx = data_rows.len().saturating_sub(1);
+
+        for (idx, row) in data_rows.iter().enumerate() {
             out.push_str("  ");
-            out.push_str(&row.join(" & "));
+            if idx == last_idx {
+                let mut last_row = (*row).clone();
+                if let Some(first_cell) = last_row.first_mut() {
+                    first_cell.push_str("\\label{ltend:\\arabic{ltid}}");
+                }
+                out.push_str(&last_row.join(" & "));
+            } else {
+                out.push_str(&row.join(" & "));
+            }
             out.push_str(" \\\\\n  \\hline\n");
         }
-        
         out.push_str("  \\end{xltabular}\n  }\n\n");
     } else {
         // ============ РЕЖИМ БЕЗ ПЕРЕНОСА (tabularx) ============
@@ -716,8 +748,7 @@ fn render_table<'a>(
         out.push_str("|}\n  \\hline\n");
         for (i, row) in rows.iter().enumerate() {
             if i == 0 {
-                let bold: Vec<String> =
-                    row.iter().map(|c| format!("\\textbf{{{}}}", c)).collect();
+                let bold: Vec<String> = row.iter().map(|c| format!("\\textbf{{{}}}", c)).collect();
                 out.push_str("    ");
                 out.push_str(&bold.join(" & "));
                 out.push_str(" \\\\\n  \\hline\\hline\n");

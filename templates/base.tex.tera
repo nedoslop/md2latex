@@ -262,6 +262,19 @@
   \renewcommand{\tablename}{ {{- labels.table_name | trim -}} }
 }
 
+% ========== Поддержка "Окончание таблицы" (СТУ 7.5-07 / ГОСТ) ==========
+\usepackage{refcount}
+{% raw %}
+\newcounter{ltid}
+\def\ltHeaderText#1#2#3{%
+  \ifnum\getpagerefnumber{ltend:\arabic{ltid}}=\value{page}%
+    #2~#3%
+  \else
+    #1~#3%
+  \fi
+}
+{% endraw %}
+
 \begin{document}
 
 {{ title_page }}
