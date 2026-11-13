@@ -1,8 +1,17 @@
+//! Configuration loading and data model.
+//!
+//! The Rust code itself contains **no** natural-language strings: every
+//! user-visible text, every structural heading, and every label is supplied
+//! through the TOML configuration (or through templates). Defaults that
+//! remain here are neutral English fallbacks, so the converter works out of
+//! the box for English documents and can be fully localized via config.
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Top-level configuration tree loaded from a TOML file.
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub project: Project,
@@ -23,9 +32,10 @@ pub struct Config {
     #[serde(default)]
     pub line_breaking: LineBreaking,
     #[serde(default)]
-    pub labels: Labels, // <-- ДОБАВЛЕНО
+    pub labels: Labels,
 }
 
+/// Project-level settings: input file, output directory, build options.
 #[derive(Debug, Deserialize)]
 pub struct Project {
     pub doc_type: String,
@@ -37,6 +47,12 @@ pub struct Project {
     pub compile_pdf: bool,
 }
 
+/// Document style settings.
+///
+/// The fields `language`, `other_language`, `appendix_prefix`,
+/// `main_part_heading`, `bibliography_heading` and
+/// `extra_structural_headings` are the localisation hooks: change them to
+/// get a document in another language without touching the code.
 #[derive(Debug, Deserialize)]
 pub struct Style {
     pub font: String,
@@ -64,10 +80,24 @@ pub struct Style {
     #[serde(default = "default_true")]
     pub title_page_fill_empty: bool,
 
+    /// Explicit list of structural (top-level) headings. When non-empty,
+    /// overrides everything derived from `extra_structural_headings` and
+    /// the three special headings below.
     #[serde(default)]
     pub structural_headings: Vec<String>,
+
+    /// Additional structural headings, appended (together with
+    /// `bibliography_heading`, `appendix_prefix`, `main_part_heading`) to
+    /// form the effective structural-headings list. Use this to localize
+    /// the converter without touching the code.
+    #[serde(default)]
+    pub extra_structural_headings: Vec<String>,
+
+    /// Subsection headings (H2+) inside structural sections that should
+    /// remain unnumbered (e.g. sub-headings of an introduction).
     #[serde(default)]
     pub structural_headings_unnumbered_subsections: Vec<String>,
+
     #[serde(default = "default_true")]
     pub structural_headings_newpage: bool,
     #[serde(default = "default_true")]
@@ -105,15 +135,34 @@ pub struct Style {
     #[serde(default = "default_subsection_after_skip")]
     pub subsection_after_skip: String,
 
+    /// Default appendix designator (used if an appendix heading has no
+    /// explicit letter, e.g. "APPENDIX" with no "A").
+    #[serde(default = "default_appendix_default_letter")]
+    pub appendix_default_letter: String,
+
+    /// Prefix that identifies an appendix heading (e.g. "APPENDIX").
     #[serde(default = "default_appendix_prefix")]
     pub appendix_prefix: String,
+
+    /// Heading of the "main part" section that is not printed as a title
+    /// but switches back to numbered sub-sections.
     #[serde(default = "default_main_part_heading")]
     pub main_part_heading: String,
+
+    /// Heading of the bibliography section.
     #[serde(default = "default_bibliography_heading")]
     pub bibliography_heading: String,
+
+    /// Main language for polyglossia (e.g. "russian", "english").
+    #[serde(default = "default_language")]
+    pub language: String,
+
+    /// Secondary language for polyglossia (e.g. "english").
+    #[serde(default = "default_other_language")]
+    pub other_language: String,
 }
 
-// ── Локализация (подписи и названия) ─────────────────────────────────────
+// ── Localizable labels used in captions and section titles ────────────────
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Labels {
     #[serde(default = "default_table_continued")]
@@ -129,24 +178,14 @@ pub struct Labels {
     #[serde(default = "default_bibliography_name")]
     pub bibliography_name: String,
 }
-fn default_table_continued() -> String {
-    "Продолжение таблицы".into()
-}
-fn default_table_ended() -> String {
-    "Окончание таблицы".into()
-}
-fn default_figure_name() -> String {
-    "Рисунок".into()
-}
-fn default_table_name() -> String {
-    "Таблица".into()
-}
-fn default_contents_name() -> String {
-    "СОДЕРЖАНИЕ".into()
-}
-fn default_bibliography_name() -> String {
-    "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ".into()
-}
+
+fn default_table_continued() -> String { "Continued table".into() }
+fn default_table_ended() -> String { "End of table".into() }
+fn default_figure_name() -> String { "Figure".into() }
+fn default_table_name() -> String { "Table".into() }
+fn default_contents_name() -> String { "CONTENTS".into() }
+fn default_bibliography_name() -> String { "REFERENCES".into() }
+
 impl Default for Labels {
     fn default() -> Self {
         Self {
@@ -160,91 +199,54 @@ impl Default for Labels {
     }
 }
 
-fn default_font_fallback() -> String {
-    "TeX Gyre Termes".into()
-}
-fn default_font_size() -> String {
-    "14pt".into()
-}
-fn default_margin_left() -> String {
-    "30mm".into()
-}
-fn default_margin() -> String {
-    "20mm".into()
-}
-fn default_paragraph_indent() -> String {
-    "12.5mm".into()
-}
-fn default_line_spacing() -> String {
-    "onehalf".into()
-}
-fn default_numbering() -> String {
-    "within_section".into()
-}
-fn default_figure_width() -> String {
-    "0.8".into()
-}
-fn default_true() -> bool {
-    true
-}
-fn default_false() -> bool {
-    false
-}
-fn default_main_font() -> String {
-    "Times New Roman".into()
-}
-fn default_mono_font() -> String {
-    "Courier New".into()
-}
-fn default_caption_font_size() -> String {
-    "14pt".into()
-}
-fn default_table_font_size() -> String {
-    "12pt".into()
-}
-fn default_section_align() -> String {
-    "center".into()
-}
-fn default_section_before_skip() -> String {
-    "12pt".into()
-}
-fn default_section_after_skip() -> String {
-    "12pt".into()
-}
-fn default_subsection_before_skip() -> String {
-    "12pt".into()
-}
-fn default_subsection_after_skip() -> String {
-    "6pt".into()
-}
-fn default_appendix_prefix() -> String {
-    "ПРИЛОЖЕНИЕ".into()
-}
-fn default_main_part_heading() -> String {
-    "ОСНОВНАЯ ЧАСТЬ".into()
-}
-fn default_bibliography_heading() -> String {
-    "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ".into()
-}
+fn default_font_fallback() -> String { "TeX Gyre Termes".into() }
+fn default_font_size() -> String { "14pt".into() }
+fn default_margin_left() -> String { "30mm".into() }
+fn default_margin() -> String { "20mm".into() }
+fn default_paragraph_indent() -> String { "12.5mm".into() }
+fn default_line_spacing() -> String { "onehalf".into() }
+fn default_numbering() -> String { "within_section".into() }
+fn default_figure_width() -> String { "0.8".into() }
+fn default_true() -> bool { true }
+fn default_false() -> bool { false }
+fn default_main_font() -> String { "Times New Roman".into() }
+fn default_mono_font() -> String { "Courier New".into() }
+fn default_caption_font_size() -> String { "14pt".into() }
+fn default_table_font_size() -> String { "12pt".into() }
+fn default_section_align() -> String { "center".into() }
+fn default_section_before_skip() -> String { "12pt".into() }
+fn default_section_after_skip() -> String { "12pt".into() }
+fn default_subsection_before_skip() -> String { "12pt".into() }
+fn default_subsection_after_skip() -> String { "6pt".into() }
+fn default_appendix_default_letter() -> String { "A".into() }
+fn default_appendix_prefix() -> String { "APPENDIX".into() }
+fn default_main_part_heading() -> String { "MAIN PART".into() }
+fn default_bibliography_heading() -> String { "REFERENCES".into() }
+fn default_language() -> String { "english".into() }
+fn default_other_language() -> String { "russian".into() }
 
 impl Style {
+    /// Effective list of structural (top-level) headings.
+    ///
+    /// * If `structural_headings` is explicitly set, it is returned as-is.
+    /// * Otherwise the list is composed from `extra_structural_headings`
+    ///   plus the three special headings.
+    ///
+    /// Order is irrelevant: callers only test membership.
     pub fn structural_list(&self) -> Vec<String> {
         if !self.structural_headings.is_empty() {
             return self.structural_headings.clone();
         }
-        vec![
-            "ВВЕДЕНИЕ".into(),
-            "ЗАКЛЮЧЕНИЕ".into(),
-            "СОДЕРЖАНИЕ".into(),
-            "РЕФЕРАТ".into(),
-            "АННОТАЦИЯ".into(),
-            self.bibliography_heading.clone(),
-            "СПИСОК СОКРАЩЕНИЙ".into(),
-            self.appendix_prefix.clone(),
-            self.main_part_heading.clone(),
-        ]
+        let mut list = Vec::with_capacity(self.extra_structural_headings.len() + 3);
+        list.extend(self.extra_structural_headings.iter().cloned());
+        list.push(self.bibliography_heading.clone());
+        list.push(self.appendix_prefix.clone());
+        list.push(self.main_part_heading.clone());
+        list
     }
 
+    /// Returns `true` if `heading` is an unnumbered subsection of a
+    /// structural section (or an appendix heading).
     pub fn is_unnumbered_subsection(&self, heading: &str) -> bool {
         let t = heading.trim().to_uppercase();
 
@@ -271,6 +273,7 @@ impl Style {
     }
 }
 
+/// One student on the title page.
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Student {
     #[serde(default)]
@@ -281,6 +284,11 @@ pub struct Student {
     pub student_id: String,
 }
 
+/// Title page data and localized boilerplate.
+///
+/// The `*_label` fields together with `ministry` / `org_line1` / `org_line2`
+/// hold the localized title-page text. They all have neutral English
+/// defaults and are meant to be overridden in the config file.
 #[derive(Debug, Deserialize)]
 pub struct Title {
     pub university: String,
@@ -306,7 +314,43 @@ pub struct Title {
     pub reviewer: String,
     pub year: String,
     pub city: String,
+
+    // ── Localized title-page boilerplate ───────────────────────────────
+    #[serde(default = "default_ministry")]
+    pub ministry: String,
+    #[serde(default = "default_org_line1")]
+    pub org_line1: String,
+    #[serde(default = "default_org_line2")]
+    pub org_line2: String,
+    #[serde(default = "default_institute_label")]
+    pub institute_label: String,
+    #[serde(default = "default_department_label")]
+    pub department_label: String,
+    #[serde(default = "default_topic_label")]
+    pub topic_label: String,
+    #[serde(default = "default_supervisor_label")]
+    pub supervisor_label: String,
+    #[serde(default = "default_student_label")]
+    pub student_label: String,
+    #[serde(default = "default_group_id_label")]
+    pub group_id_label: String,
+    #[serde(default = "default_signature_label")]
+    pub signature_label: String,
+    #[serde(default = "default_name_label")]
+    pub name_label: String,
 }
+
+fn default_ministry() -> String { "Ministry of Science and Higher Education".into() }
+fn default_org_line1() -> String { "Federal State Autonomous".into() }
+fn default_org_line2() -> String { "Educational Institution of Higher Education".into() }
+fn default_institute_label() -> String { "institute".into() }
+fn default_department_label() -> String { "department".into() }
+fn default_topic_label() -> String { "project topic".into() }
+fn default_supervisor_label() -> String { "Supervisor".into() }
+fn default_student_label() -> String { "Student".into() }
+fn default_group_id_label() -> String { "group number, student ID".into() }
+fn default_signature_label() -> String { "signature, date".into() }
+fn default_name_label() -> String { "initials, surname".into() }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Bibliography {
@@ -327,15 +371,9 @@ pub struct Links {
     #[serde(default = "default_false")]
     pub boxed: bool,
 }
-fn default_link_color() -> String {
-    "black".into()
-}
-fn default_cite_color() -> String {
-    "black".into()
-}
-fn default_url_color() -> String {
-    "blue".into()
-}
+fn default_link_color() -> String { "black".into() }
+fn default_cite_color() -> String { "black".into() }
+fn default_url_color() -> String { "blue".into() }
 impl Default for Links {
     fn default() -> Self {
         Self {
@@ -357,9 +395,7 @@ pub struct Images {
     #[serde(default = "default_dpi")]
     pub dpi: u32,
 }
-fn default_dpi() -> u32 {
-    300
-}
+fn default_dpi() -> u32 { 300 }
 impl Default for Images {
     fn default() -> Self {
         Self {
@@ -379,15 +415,9 @@ pub struct Lists {
     #[serde(default = "default_bibliography_label")]
     pub bibliography_label: String,
 }
-fn default_itemize_label() -> String {
-    "\\textendash".into()
-}
-fn default_enumerate_label() -> String {
-    "\\arabic*)".into()
-}
-fn default_bibliography_label() -> String {
-    "\\arabic*.".into()
-}
+fn default_itemize_label() -> String { "\\textendash".into() }
+fn default_enumerate_label() -> String { "\\arabic*)".into() }
+fn default_bibliography_label() -> String { "\\arabic*.".into() }
 impl Default for Lists {
     fn default() -> Self {
         Self {
@@ -411,21 +441,11 @@ pub struct Templates {
     #[serde(default = "default_title_master")]
     pub title_master: String,
 }
-fn default_templates_dir() -> String {
-    "templates".into()
-}
-fn default_base_template() -> String {
-    "base.tex.tera".into()
-}
-fn default_title_course() -> String {
-    "title_course.tex.tera".into()
-}
-fn default_title_bachelor() -> String {
-    "title_bachelor.tex.tera".into()
-}
-fn default_title_master() -> String {
-    "title_master.tex.tera".into()
-}
+fn default_templates_dir() -> String { "templates".into() }
+fn default_base_template() -> String { "base.tex.tera".into() }
+fn default_title_course() -> String { "title_course.tex.tera".into() }
+fn default_title_bachelor() -> String { "title_bachelor.tex.tera".into() }
+fn default_title_master() -> String { "title_master.tex.tera".into() }
 impl Default for Templates {
     fn default() -> Self {
         Self {
@@ -461,9 +481,7 @@ pub struct Toc {
 }
 impl Default for Toc {
     fn default() -> Self {
-        Self {
-            clickable_dots: true,
-        }
+        Self { clickable_dots: true }
     }
 }
 
@@ -482,21 +500,11 @@ pub struct LineBreaking {
     #[serde(default = "default_hbadness")]
     pub hbadness: i32,
 }
-fn default_hyphen_penalty() -> i32 {
-    50
-}
-fn default_exhyphen_penalty() -> i32 {
-    50
-}
-fn default_emergencystretch() -> String {
-    "2em".into()
-}
-fn default_tolerance() -> i32 {
-    9999
-}
-fn default_hbadness() -> i32 {
-    10000
-}
+fn default_hyphen_penalty() -> i32 { 50 }
+fn default_exhyphen_penalty() -> i32 { 50 }
+fn default_emergencystretch() -> String { "2em".into() }
+fn default_tolerance() -> i32 { 9999 }
+fn default_hbadness() -> i32 { 10000 }
 
 impl Default for LineBreaking {
     fn default() -> Self {
@@ -512,10 +520,13 @@ impl Default for LineBreaking {
 }
 
 impl Config {
+    /// Loads a config from disk and resolves a relative `templates.dir`
+    /// against the config file's location.
     pub fn from_file(path: &Path) -> Result<Self> {
         let raw = fs::read_to_string(path)
-            .with_context(|| format!("Не удалось прочитать {}", path.display()))?;
-        let mut cfg: Config = toml::from_str(&raw).with_context(|| "Некорректный TOML-конфиг")?;
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let mut cfg: Config =
+            toml::from_str(&raw).with_context(|| "invalid TOML configuration")?;
 
         let cfg_dir = path.parent().unwrap_or_else(|| Path::new("."));
         if !Path::new(&cfg.templates.dir).is_absolute() {

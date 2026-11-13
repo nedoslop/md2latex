@@ -4,11 +4,11 @@
 \begin{singlespace}
 \begin{center}
 {\fontsize{14pt}{16.8pt}\selectfont
-Министерство науки и высшего образования РФ\par}
+{{ ministry }}\par}
 {\fontsize{12pt}{14.4pt}\selectfont
-Федеральное государственное автономное\\
-образовательное учреждение высшего образования\\
-\textbf{\MakeUppercase{«Сибирский федеральный университет»}}\par}
+{{ org_line1 }}\\
+{{ org_line2 }}\\
+\textbf{\MakeUppercase{«{{ university }}»}}\par}
 
 \vspace{1.2cm}
 
@@ -17,7 +17,7 @@
 {% else %}
 \rule{12cm}{0.4pt}\par
 {% endif %}
-{\fontsize{10pt}{12pt}\selectfont институт\par}
+{\fontsize{10pt}{12pt}\selectfont {{ institute_label }}\par}
 
 \vspace{0.6cm}
 
@@ -26,7 +26,7 @@
 {% else %}
 \rule{12cm}{0.4pt}\par
 {% endif %}
-{\fontsize{10pt}{12pt}\selectfont кафедра\par}
+{\fontsize{10pt}{12pt}\selectfont {{ department_label }}\par}
 \end{center}
 
 \vspace{1.8cm}
@@ -38,44 +38,44 @@
 
 {\fontsize{14pt}{16.8pt}\selectfont {{ topic }}\par}
 \vspace{0.1cm}
-{\fontsize{10pt}{12pt}\selectfont тема проекта (работы)\par}
+{\fontsize{10pt}{12pt}\selectfont {{ topic_label }}\par}
 \end{center}
 
 \vspace{1.8cm}
 
 \noindent
 \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} l c c c @{}}
-{\fontsize{14pt}{16.8pt}\selectfont Руководитель} &
+{\fontsize{14pt}{16.8pt}\selectfont {{ supervisor_label }}} &
 &
 \begin{tabular}[t]{@{}c@{}}
   \rule{3.5cm}{0.4pt}\\
-  {\fontsize{10pt}{12pt}\selectfont подпись, дата}
+  {\fontsize{10pt}{12pt}\selectfont {{ signature_label }}}
 \end{tabular} &
 \begin{tabular}[t]{@{}c@{}}
   {\fontsize{14pt}{16.8pt}\selectfont {{ supervisor }}}\\
-  {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
+  {\fontsize{10pt}{12pt}\selectfont {{ name_label }}}
 \end{tabular} \\[1.4cm]
 
 {% for s in students %}
-{\fontsize{14pt}{16.8pt}\selectfont Студент} &
+{\fontsize{14pt}{16.8pt}\selectfont {{ student_label }}} &
 {% if s.group | trim != "" or s.student_id | trim != "" %}
 \begin{tabular}[t]{@{}c@{}}
   {\fontsize{14pt}{16.8pt}\selectfont {% if s.group | trim != "" %}{{ s.group }}{% endif %}{% if s.group | trim != "" and s.student_id | trim != "" %}, {% endif %}{% if s.student_id | trim != "" %}{{ s.student_id }}{% endif %}}\\
-  {\fontsize{10pt}{12pt}\selectfont номер группы, зачетной книжки}
+  {\fontsize{10pt}{12pt}\selectfont {{ group_id_label }}}
 \end{tabular}
 {% else %}
 \begin{tabular}[t]{@{}c@{}}
   \rule{4.5cm}{0.4pt}\\
-  {\fontsize{10pt}{12pt}\selectfont номер группы, зачетной книжки}
+  {\fontsize{10pt}{12pt}\selectfont {{ group_id_label }}}
 \end{tabular}
 {% endif %} &
 \begin{tabular}[t]{@{}c@{}}
   \rule{3.5cm}{0.4pt}\\
-  {\fontsize{10pt}{12pt}\selectfont подпись, дата}
+  {\fontsize{10pt}{12pt}\selectfont {{ signature_label }}}
 \end{tabular} &
 \begin{tabular}[t]{@{}c@{}}
   {\fontsize{14pt}{16.8pt}\selectfont {{ s.name }}}\\
-  {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
+  {\fontsize{10pt}{12pt}\selectfont {{ name_label }}}
 \end{tabular}{% if not loop.last %} \\[1.4cm]{% else %} \\{% endif %}
 {% endfor %}
 \end{tabular*}

@@ -1,9 +1,16 @@
+//! Markdown -> LaTeX conversion.
+//!
+//! Structural headings, appendix prefix, bibliography heading, and all
+//! caption labels are read from the config; this module contains no
+//! natural-language strings.
+
 use crate::config::Config;
 use anyhow::Result;
 use comrak::nodes::{AstNode, NodeLink, NodeValue};
 use comrak::{parse_document, Arena, ComrakOptions};
 use regex::Regex;
 
+/// Rendering context: which kind of section we are currently in.
 #[derive(Clone, Copy, PartialEq)]
 enum Ctx {
     Ordinary,
@@ -12,6 +19,7 @@ enum Ctx {
     Appendix,
 }
 
+/// Table caption parsed from a `#tbl:` marker paragraph.
 struct PendingTableCaption {
     label: Option<String>,
     caption: String,
@@ -24,7 +32,7 @@ pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let mut options = ComrakOptions::default();
     options.extension.table = true;
     options.extension.footnotes = true;
-    // Отключаем встроенный strikethrough, чтобы самим обрабатывать ~ и ~~
+    // Built-in strikethrough is disabled: `~` and `~~` are handled by hand.
     options.extension.strikethrough = false;
     options.extension.tasklist = true;
     options.extension.math_dollars = true;
@@ -66,6 +74,7 @@ fn render_node<'a>(
 ) -> Result<()> {
     let value = node.data.borrow().value.clone();
 
+    // A pending table caption is only valid directly before a table.
     if !matches!(value, NodeValue::Table(_)) {
         if let Some(pt) = pending.take() {
             out.push_str(&escape_latex(&pt.caption));
@@ -105,7 +114,7 @@ fn render_node<'a>(
                     }
                 } else {
                     eprintln!(
-                        "⚠️  H1-заголовок вне structural_list: '{}' — трактую как \\section",
+                        "warning: H1 heading not in structural list: '{}' - rendering as \\section",
                         clean
                     );
                     *in_bibliography = false;
@@ -216,6 +225,7 @@ fn render_node<'a>(
                 return Ok(());
             }
 
+            // Lone display-math paragraph -> equation environment.
             let children: Vec<_> = node.children().collect();
             if children.len() == 1 {
                 if let NodeValue::Math(m) = &children[0].data.borrow().value {
@@ -363,6 +373,8 @@ fn render_list<'a>(
     Ok(())
 }
 
+/// `true` if `text` matches one of the structural headings (or the
+/// appendix prefix with a designator).
 fn is_structural(text: &str, cfg: &Config) -> bool {
     let t = text.trim().to_uppercase();
     let appendix_upper = cfg.style.appendix_prefix.trim().to_uppercase();
@@ -389,6 +401,7 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
         to_title_case_if_upper(text)
     };
 
+    // "Main part" is a silent switch back to numbered sub-sections.
     if display.trim().to_uppercase() == cfg.style.main_part_heading.trim().to_uppercase() {
         return Ok(());
     }
@@ -417,7 +430,10 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
     };
 
     let mut parts = rest.splitn(2, char::is_whitespace);
-    let letter = parts.next().unwrap_or("А").to_uppercase();
+    let letter = match parts.next() {
+        Some(s) if !s.is_empty() => s.to_uppercase(),
+        _ => cfg.style.appendix_default_letter.to_uppercase(),
+    };
     let title = parts.next().unwrap_or("").trim();
 
     let app_label = format!("{} {}", cfg.style.appendix_prefix, letter);
@@ -517,7 +533,7 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
     Ok(())
 }
 
-/// Обрабатывает текст: сначала защищает URL, затем парсит тильды.
+/// Handles text nodes: protects URLs first, then parses `~`/`~~`.
 fn render_text_node(text: &str) -> String {
     let normalized = normalize_dashes(text);
     let re = Regex::new(r"https?://[^\s\)\]\}]+").unwrap();
@@ -533,7 +549,7 @@ fn render_text_node(text: &str) -> String {
     out
 }
 
-/// Парсит `~~текст~~` как зачёркивание, а `~текст~` как нижний индекс.
+/// Parses `~~text~~` as strikethrough, `~text~` as subscript.
 fn parse_tildes(text: &str) -> String {
     let mut result = String::new();
     let mut remaining = text;
@@ -559,22 +575,20 @@ fn parse_tildes(text: &str) -> String {
                 result.push_str("\\textasciitilde{}\\textasciitilde{}");
                 remaining = &after[2..];
             }
-        } else {
-            if let Some(end) = after[1..].find('~') {
-                let content = &after[1..1 + end];
-                if content.is_empty() {
-                    result.push_str("\\textasciitilde{}");
-                    remaining = &after[1..];
-                } else {
-                    result.push_str("\\textsubscript{");
-                    result.push_str(&escape_latex(content));
-                    result.push('}');
-                    remaining = &after[1 + end + 1..];
-                }
-            } else {
+        } else if let Some(end) = after[1..].find('~') {
+            let content = &after[1..1 + end];
+            if content.is_empty() {
                 result.push_str("\\textasciitilde{}");
                 remaining = &after[1..];
+            } else {
+                result.push_str("\\textsubscript{");
+                result.push_str(&escape_latex(content));
+                result.push('}');
+                remaining = &after[1 + end + 1..];
             }
+        } else {
+            result.push_str("\\textasciitilde{}");
+            remaining = &after[1..];
         }
     }
     result.push_str(&escape_latex(remaining));
@@ -711,7 +725,7 @@ fn render_table<'a>(
     };
 
     if breakable {
-        // ============ РЕЖИМ ПЕРЕНОСА (xltabular) ============
+        // ============ BREAKABLE MODE (xltabular) ============
         if new_page {
             out.push_str("\\clearpage\n");
         }
@@ -748,23 +762,22 @@ fn render_table<'a>(
             .map(|r| r.iter().map(|c| format!("\\textbf{{{}}}", c)).collect())
             .unwrap_or_default();
 
-        // 1. Шапка первой страницы
+        // Header on the first page.
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
 
-        // 2. Шапка последующих страниц
+        // Header on subsequent pages.
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
 
-        // 3. Подвал промежуточных страниц
+        // Footer on intermediate pages.
         out.push_str("  \\endfoot\n");
 
-        // 4. Подвал последней страницы
+        // Footer on the last page.
         out.push_str("  \\endlastfoot\n");
 
-        // Строки данных
         let data_rows: Vec<_> = rows.iter().skip(1).collect();
         let last_idx = data_rows.len().saturating_sub(1);
 
@@ -784,7 +797,7 @@ fn render_table<'a>(
 
         out.push_str("  \\end{xltabular}\n  }\n\n");
     } else {
-        // ============ РЕЖИМ БЕЗ ПЕРЕНОСА (tabularx) ============
+        // ============ NON-BREAKABLE MODE (tabularx) ============
         out.push_str("\\begin{table}[H]\n  \\centering\n");
         if cfg.style.table_caption_above {
             if !caption_latex.is_empty() {
@@ -846,6 +859,8 @@ fn strip_heading_number(text: &str) -> String {
     re.replace(text, "").trim().to_string()
 }
 
+/// Returns `s` as-is unless it is ALL-CAPS, in which case it is converted
+/// to sentence case (first letter uppercase, rest lowercase).
 fn to_title_case_if_upper(s: &str) -> String {
     let trimmed = s.trim();
     if trimmed.is_empty() {

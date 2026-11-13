@@ -1,9 +1,18 @@
+//! Image preprocessing: copy (and optionally convert) every image referenced
+//! from Markdown into `<out_dir>/images/`, rewriting the Markdown links
+//! accordingly.
+
 use anyhow::{Context, Result};
 use image::ImageFormat;
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Walks through `md`, copies referenced images into `out_dir/images/`,
+/// optionally converts them to `convert_to`, and returns the rewritten
+/// Markdown where every image link points to the new location.
+///
+/// Remote URLs are left untouched; missing local files produce a warning.
 pub fn prepare_images(
     md: &str,
     md_path: &Path,
@@ -13,12 +22,12 @@ pub fn prepare_images(
 ) -> Result<String> {
     let images_out = out_dir.join("images");
     fs::create_dir_all(&images_out)
-        .with_context(|| format!("Не удалось создать {}", images_out.display()))?;
+        .with_context(|| format!("failed to create {}", images_out.display()))?;
 
     let md_dir = md_path.parent().unwrap_or_else(|| Path::new("."));
 
     let re = Regex::new(r#"!\[([^\]]*)\]\(([^)\s]+)(\s+[^)]*)?\)"#)
-        .context("Не удалось скомпилировать регулярное выражение")?;
+        .context("failed to compile image regex")?;
 
     let mut used_names: std::collections::HashSet<String> = Default::default();
 
@@ -28,7 +37,7 @@ pub fn prepare_images(
         let rest = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
         if src.starts_with("http://") || src.starts_with("https://") {
-            eprintln!("⚠️  Пропускаю URL-изображение: {}", src);
+            eprintln!("warning: skipping URL image: {}", src);
             return caps[0].to_string();
         }
 
@@ -39,7 +48,7 @@ pub fn prepare_images(
         };
 
         if !full_src.exists() {
-            eprintln!("⚠️  Не найден файл: {}", full_src.display());
+            eprintln!("warning: file not found: {}", full_src.display());
             return caps[0].to_string();
         }
 
@@ -75,17 +84,17 @@ pub fn prepare_images(
                     sanitized = dest.file_name().unwrap().to_string_lossy().to_string();
                 }
                 Err(e) => eprintln!(
-                    "⚠️  Не удалось конвертировать {}: {}",
+                    "warning: failed to convert {}: {}",
                     full_src.display(),
                     e
                 ),
             }
         }
 
-        // изменено: всегда перезаписываем (fs::copy сам перезаписывает),
-        // чтобы обновлённые картинки попадали в out/images/ при повторной сборке
+        // Always copy (overwrites), so updated sources reach `out/images/`
+        // on repeated builds.
         if let Err(e) = fs::copy(&full_src, &dest) {
-            eprintln!("⚠️  Не удалось скопировать {}: {}", full_src.display(), e);
+            eprintln!("warning: failed to copy {}: {}", full_src.display(), e);
             return caps[0].to_string();
         }
 
@@ -100,7 +109,7 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
         "pdf" => raster_to_pdf(src, dst, dpi),
         "png" | "jpg" | "jpeg" | "bmp" | "gif" | "tiff" | "webp" => {
             let img = image::open(src)
-                .with_context(|| format!("Не удалось открыть {}", src.display()))?;
+                .with_context(|| format!("failed to open {}", src.display()))?;
             let format = match ext {
                 "png" => ImageFormat::Png,
                 "jpg" | "jpeg" => ImageFormat::Jpeg,
@@ -111,18 +120,19 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
                 _ => unreachable!(),
             };
             img.save_with_format(dst, format)
-                .with_context(|| format!("Не удалось сохранить {}", dst.display()))?;
+                .with_context(|| format!("failed to save {}", dst.display()))?;
             Ok(())
         }
-        other => anyhow::bail!("Неподдерживаемый формат: {}", other),
+        other => anyhow::bail!("unsupported format: {}", other),
     }
 }
 
+/// Rasterises a raster image into a single-page PDF at the given DPI.
 fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
     use printpdf::*;
 
     let img =
-        image_crate::open(src).with_context(|| format!("Не удалось открыть {}", src.display()))?;
+        image_crate::open(src).with_context(|| format!("failed to open {}", src.display()))?;
     let (w, h) = (img.width(), img.height());
     let dpi_f = dpi.max(1) as f32;
     let width_mm = (w as f32) * 25.4 / dpi_f;
@@ -135,12 +145,13 @@ fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
     pdf_image.add_to_layer(current_layer, ImageTransform::default());
 
     let file =
-        fs::File::create(dst).with_context(|| format!("Не удалось создать {}", dst.display()))?;
+        fs::File::create(dst).with_context(|| format!("failed to create {}", dst.display()))?;
     doc.save(&mut std::io::BufWriter::new(file))
-        .with_context(|| format!("Не удалось записать {}", dst.display()))?;
+        .with_context(|| format!("failed to write {}", dst.display()))?;
     Ok(())
 }
 
+/// Replaces characters that may be unsafe in filenames.
 fn sanitize(name: &str) -> String {
     name.chars()
         .map(|c| {

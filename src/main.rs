@@ -1,3 +1,7 @@
+//! Command-line entry point: loads config, prepares images, converts
+//! Markdown to LaTeX, renders the final `.tex`, and optionally compiles it
+//! with `xelatex`.
+
 mod config;
 mod images;
 mod markdown;
@@ -11,7 +15,7 @@ use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "md2latex-gost")]
-#[command(about = "Конвертер Markdown -> LaTeX с оформлением по ГОСТ / СТУ")]
+#[command(about = "Markdown -> LaTeX converter with GOST / STU formatting")]
 struct Cli {
     #[arg(short, long, default_value = "md2latex.toml")]
     config: PathBuf,
@@ -20,11 +24,11 @@ struct Cli {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg =
-        config::Config::from_file(&cli.config).context("Не удалось загрузить конфигурацию")?;
+        config::Config::from_file(&cli.config).context("failed to load configuration")?;
 
     let md_path = PathBuf::from(&cfg.project.input);
     let md_content = fs::read_to_string(&md_path)
-        .with_context(|| format!("Не удалось прочитать {}", md_path.display()))?;
+        .with_context(|| format!("failed to read {}", md_path.display()))?;
 
     let out_dir = PathBuf::from(&cfg.project.output_dir);
     fs::create_dir_all(&out_dir)?;
@@ -36,18 +40,18 @@ fn main() -> Result<()> {
         cfg.images.convert_to.as_deref(),
         cfg.images.dpi,
     )
-    .context("Ошибка при подготовке изображений")?;
+    .context("image preparation failed")?;
 
     let body = markdown::markdown_to_latex(&md_prepared, &cfg)
-        .context("Ошибка при преобразовании Markdown")?;
+        .context("Markdown conversion failed")?;
 
     let full_latex =
-        template::render_document(&cfg, &body).context("Ошибка при рендеринге LaTeX-шаблона")?;
+        template::render_document(&cfg, &body).context("LaTeX template rendering failed")?;
 
     let tex_path = out_dir.join("main.tex");
     fs::write(&tex_path, &full_latex)
-        .with_context(|| format!("Не удалось записать {}", tex_path.display()))?;
-    println!("✅ LaTeX сохранён: {}", tex_path.display());
+        .with_context(|| format!("failed to write {}", tex_path.display()))?;
+    println!("LaTeX saved: {}", tex_path.display());
 
     if cfg.project.compile_pdf {
         compile_pdf(&tex_path)?;
@@ -56,28 +60,30 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Runs `xelatex` (and `biber` if needed), then `xelatex` twice more to
+/// stabilise the table of contents and cross-references.
 fn compile_pdf(tex_path: &Path) -> Result<()> {
     let dir = tex_path.parent().unwrap();
-    println!("🔨 Запуск xelatex...");
+    println!("running xelatex...");
 
     let args: &[&str] = &["-interaction=nonstopmode", "-halt-on-error", "main.tex"];
     run_latex(dir, args)?;
 
     if tex_path.with_extension("bcf").exists() {
-        println!("📚 Запуск biber...");
+        println!("running biber...");
         Command::new("biber")
             .arg("main")
             .current_dir(dir)
             .status()
-            .context("biber не найден или завершился с ошибкой")?;
+            .context("biber not found or failed")?;
     }
 
     run_latex(dir, args)?;
-    // добавлено: третий прогон — стабилизация номеров страниц в оглавлении
-    // и перекрёстных ссылок \ref{} при длинном ToC
+    // Third pass stabilises page numbers in the ToC and \ref{} when the
+    // ToC is long.
     run_latex(dir, args)?;
 
-    println!("✅ PDF готов: {}", dir.join("main.pdf").display());
+    println!("PDF ready: {}", dir.join("main.pdf").display());
     Ok(())
 }
 
@@ -86,9 +92,9 @@ fn run_latex(dir: &Path, args: &[&str]) -> Result<()> {
         .args(args)
         .current_dir(dir)
         .status()
-        .context("xelatex не найден. Установите TeX Live / MiKTeX.")?;
+        .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
     if !status.success() {
-        anyhow::bail!("xelatex завершился с ошибкой");
+        anyhow::bail!("xelatex exited with an error");
     }
     Ok(())
 }

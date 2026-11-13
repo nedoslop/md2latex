@@ -1,16 +1,23 @@
+//! LaTeX template rendering via Tera.
+//!
+//! All strings that reach the final document are either user content or
+//! pulled from the configuration; the code below only wires context keys.
+
 use crate::config::{Config, Student};
 use anyhow::{Context, Result};
 use std::fs;
 use tera::{Context as TeraContext, Tera};
 
+/// Renders the base template with the given `body` and returns the final
+/// LaTeX source.
 pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     let base_path = cfg.templates.base_path();
     let title_path = cfg.templates.title_path_for(&cfg.project.doc_type);
 
     let base_content = fs::read_to_string(&base_path)
-        .with_context(|| format!("Не удалось прочитать шаблон: {}", base_path.display()))?;
+        .with_context(|| format!("failed to read template: {}", base_path.display()))?;
     let title_content = fs::read_to_string(&title_path)
-        .with_context(|| format!("Не удалось прочитать шаблон: {}", title_path.display()))?;
+        .with_context(|| format!("failed to read template: {}", title_path.display()))?;
 
     let mut tera = Tera::default();
     tera.add_raw_template("base.tex.tera", &base_content)?;
@@ -52,6 +59,10 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("subsection_before_skip", &cfg.style.subsection_before_skip);
     ctx.insert("subsection_after_skip", &cfg.style.subsection_after_skip);
 
+    // Language
+    ctx.insert("language", &cfg.style.language);
+    ctx.insert("other_language", &cfg.style.other_language);
+
     // Links
     ctx.insert("links_colored", &cfg.links.colored);
     ctx.insert("links_link_color", &cfg.links.link_color);
@@ -88,16 +99,18 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("lb_hbadness", &cfg.line_breaking.hbadness);
 
     // Labels
-    ctx.insert("labels", &cfg.labels); // <-- ДОБАВЛЕНО
+    ctx.insert("labels", &cfg.labels);
 
     // Title meta
     ctx.insert("topic", &cfg.title.topic);
     ctx.insert("student_author", &collect_author(&cfg.title));
 
     tera.render("base.tex.tera", &ctx)
-        .context("Ошибка рендеринга base.tex.tera")
+        .context("failed to render base.tex.tera")
 }
 
+/// "Author(s)" string for PDF metadata: either a single student or the
+/// comma-separated list of all students' names.
 fn collect_author(t: &crate::config::Title) -> String {
     if !t.student.trim().is_empty() {
         return t.student.clone();
@@ -111,6 +124,7 @@ fn collect_author(t: &crate::config::Title) -> String {
     names.join(", ")
 }
 
+/// Fills the title-page context with all localized fields.
 fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     let t = &cfg.title;
     let fill = cfg.style.title_page_fill_empty;
@@ -123,12 +137,12 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     ctx.insert("direction_name", &t.direction_name);
     ctx.insert("topic", &t.topic);
 
-    // legacy single student
+    // Legacy single-student fields.
     ctx.insert("student", &fill_or_blank(&t.student, fill));
     ctx.insert("student_id", &t.student_id);
     ctx.insert("group", &fill_or_blank(&t.group, fill));
 
-    // new: normalized students list (always at least 1 entry)
+    // Normalized students list (always at least one entry).
     let students_ctx: Vec<Student> = if !t.students.is_empty() {
         t.students
             .iter()
@@ -168,12 +182,25 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     ctx.insert("reviewer", &fill_or_blank(&t.reviewer, fill));
     ctx.insert("year", &t.year);
     ctx.insert("city", &t.city);
+
+    // Localized title-page boilerplate.
+    ctx.insert("ministry", &t.ministry);
+    ctx.insert("org_line1", &t.org_line1);
+    ctx.insert("org_line2", &t.org_line2);
+    ctx.insert("institute_label", &t.institute_label);
+    ctx.insert("department_label", &t.department_label);
+    ctx.insert("topic_label", &t.topic_label);
+    ctx.insert("supervisor_label", &t.supervisor_label);
+    ctx.insert("student_label", &t.student_label);
+    ctx.insert("group_id_label", &t.group_id_label);
+    ctx.insert("signature_label", &t.signature_label);
+    ctx.insert("name_label", &t.name_label);
 }
 
+/// Replaces an empty string with a neutral placeholder rule when
+/// `title_page_fill_empty` is enabled.
 fn fill_or_blank(value: &str, fill: bool) -> String {
     if value.trim().is_empty() && fill {
-        // Используем \rule вместо подчеркиваний, чтобы линия была ровной,
-        // нужной толщины и идеально совпадала с линией для подписи.
         "\\rule{3.5cm}{0.4pt}".to_string()
     } else {
         value.to_string()

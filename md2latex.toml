@@ -6,43 +6,68 @@ compile_pdf = true
 bib_file = ""
 
 [style]
+# ---- fonts ----
 font = "Times New Roman"
 font_fallback = "TeX Gyre Termes"
 font_size = "14pt"
 main_font = "Times New Roman"
 mono_font = "Courier New"
 
+# ---- page geometry ----
 margin_left = "30mm"
 margin_right = "10mm"
 margin_top = "20mm"
 margin_bottom = "20mm"
 
+# ---- paragraphs ----
 paragraph_indent = "12.5mm"
 line_spacing = "onehalf"
 numbering = "within_section"
 
+# ---- section headings ----
 section_align = "raggedright"
 section_bold = true
 section_uppercase = false
 
+# ---- captions ----
 caption_font_size = "14pt"
 table_font_size   = "12pt"
 
+# ---- structural headings & figures/tables ----
 structural_heading_uppercase = true
 figure_caption_below = true
 table_caption_above  = true
 default_figure_width = "0.8"
 
-appendix_prefix = "ПРИЛОЖЕНИЕ"
-main_part_heading = "ОСНОВНАЯ ЧАСТЬ"
-bibliography_heading = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
+# ---- polyglossia languages ----
+language       = "russian"
+other_language = "english"
 
+# ---- localized structural headings ----
+# These supplement `bibliography_heading`, `appendix_prefix`, and
+# `main_part_heading` below. To localize the converter without touching
+# the Rust code, edit this list.
+extra_structural_headings = [
+    "ВВЕДЕНИЕ",
+    "ЗАКЛЮЧЕНИЕ",
+    "СОДЕРЖАНИЕ",
+    "РЕФЕРАТ",
+    "АННОТАЦИЯ",
+    "СПИСОК СОКРАЩЕНИЙ",
+]
+
+appendix_prefix         = "ПРИЛОЖЕНИЕ"
+appendix_default_letter = "А"
+main_part_heading       = "ОСНОВНАЯ ЧАСТЬ"
+bibliography_heading    = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
+
+# ---- localized labels (captions, ToC title, etc.) ----
 [labels]
 table_continued = "Продолжение таблицы"
-table_ended = "Окончание таблицы"
-figure_name = "Рисунок"
-table_name = "Таблица"
-contents_name = "СОДЕРЖАНИЕ"
+table_ended     = "Окончание таблицы"
+figure_name     = "Рисунок"
+table_name      = "Таблица"
+contents_name   = "СОДЕРЖАНИЕ"
 bibliography_name = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
 
 [lists]
@@ -92,6 +117,19 @@ supervisor_title = ""
 reviewer = ""
 year = "2026"
 city = "Красноярск"
+
+# ---- title-page boilerplate (localizable) ----
+ministry        = "Министерство науки и высшего образования РФ"
+org_line1       = "Федеральное государственное автономное"
+org_line2       = "образовательное учреждение высшего образования"
+institute_label = "институт"
+department_label = "кафедра"
+topic_label     = "тема проекта (работы)"
+supervisor_label = "Руководитель"
+student_label   = "Студент"
+group_id_label  = "номер группы, зачетной книжки"
+signature_label = "подпись, дата"
+name_label      = "инициалы, фамилия"
 
 [[title.students]]
 name = "И. И. Иванов"
