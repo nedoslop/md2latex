@@ -22,6 +22,6 @@ ret = ''
 for fn in files:
     ret += 'FILE: ' + fn + '\n'
     for line in open(os.path.join(cwd, fn), encoding='utf-8').read().split('\n'):
-        ret += line.strip() + '\n'
+        ret += line + '\n'
 
 out.write(ret)
