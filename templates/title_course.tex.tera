@@ -1,3 +1,15 @@
+{%- set ministry        = extra.ministry        | default(value="Министерство науки и высшего образования РФ") -%}
+{%- set org_line1       = extra.org_line1       | default(value="Федеральное государственное автономное") -%}
+{%- set org_line2       = extra.org_line2       | default(value="образовательное учреждение высшего образования") -%}
+{%- set university_quoted = extra.university_quoted | default(value="«" ~ university ~ "»") -%}
+{%- set institute_label = extra.institute_label | default(value="институт") -%}
+{%- set department_label = extra.department_label | default(value="кафедра") -%}
+{%- set topic_label     = extra.topic_label     | default(value="тема проекта (работы)") -%}
+{%- set supervisor_label = extra.supervisor_label | default(value="Руководитель") -%}
+{%- set student_label   = extra.student_label   | default(value="Студент") -%}
+{%- set group_id_label  = extra.group_id_label  | default(value="номер группы, зачетной книжки") -%}
+{%- set signature_label = extra.signature_label | default(value="подпись, дата") -%}
+{%- set name_label      = extra.name_label      | default(value="инициалы, фамилия") -%}
 \begin{titlepage}
 \thispagestyle{empty}
 \setlength{\parindent}{0pt}
@@ -8,7 +20,7 @@
 {\fontsize{12pt}{14.4pt}\selectfont
 {{ org_line1 }}\\
 {{ org_line2 }}\\
-\textbf{\MakeUppercase{«{{ university }}»}}\par}
+\textbf{\MakeUppercase{ {{- university_quoted -}} }}\par}
 
 \vspace{1.2cm}
 

@@ -1,15 +1,19 @@
 //! Configuration loading and data model.
 //!
-//! The Rust code itself contains **no** natural-language strings: every
-//! user-visible text, every structural heading, and every label is supplied
-//! through the TOML configuration (or through templates). Defaults that
-//! remain here are neutral English fallbacks, so the converter works out of
-//! the box for English documents and can be fully localized via config.
+//! The Rust code itself contains **no** natural-language strings and **no**
+//! institution-specific boilerplate. Everything the converter must know
+//! about (languages, structural headings, caption labels) is supplied via
+//! `[style]` / `[labels]`. Everything that only the title page cares about
+//! (ministry name, organisation lines, signature labels, …) lives inside
+//! the LaTeX template file — see `templates/title_course.tex.tera`.
+//!
+//! A free-form `[extra]` table is injected verbatim into the template
+//! context under `extra.*`. Use it to override template-side defaults or
+//! to pass any custom value without extending the Rust data model.
 //!
 //! Template selection is **path-based**: the config points directly at the
 //! base and title `.tex.tera` files. There is no code-side mapping from a
-//! "document type" to a template, which keeps the converter agnostic of any
-//! particular university's template layout.
+//! "document type" to a template.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -38,6 +42,20 @@ pub struct Config {
     pub line_breaking: LineBreaking,
     #[serde(default)]
     pub labels: Labels,
+
+    /// Free-form key/value namespace injected verbatim into the template
+    /// context under `extra.*`.
+    ///
+    /// This is the escape hatch for anything the typed schema does not
+    /// cover: institution-specific boilerplate (`extra.ministry`,
+    /// `extra.org_line1`, …), per-document custom fields, ad-hoc flags,
+    /// etc. Templates read them as `{{ extra.my_key | default(value="…") }}`.
+    ///
+    /// The whole table is passed through serde_json to Tera unchanged, so
+    /// any TOML value (string, integer, float, bool, array, nested table)
+    /// is available.
+    #[serde(default = "default_extra")]
+    pub extra: toml::Value,
 }
 
 /// Project-level settings: input file, output directory, build options.
@@ -48,8 +66,7 @@ pub struct Project {
     ///
     /// It is **not** used to select a template — templates are chosen by
     /// explicit paths in [`Templates`]. This field exists purely so the
-    /// configuration can record what kind of document is being built,
-    /// which is useful for logging and future extensions.
+    /// configuration can record what kind of document is being built.
     pub doc_type: String,
 
     pub input: String,
@@ -62,10 +79,9 @@ pub struct Project {
 
 /// Document style settings.
 ///
-/// The fields `language`, `other_language`, `appendix_prefix`,
-/// `main_part_heading`, `bibliography_heading` and
-/// `extra_structural_headings` are the localisation hooks: change them to
-/// get a document in another language without touching the code.
+/// Fields in this struct influence the **converter's** behaviour (parsing,
+/// numbering, heading recognition, language setup). Institution-specific
+/// presentation is the template's responsibility, not the config's.
 #[derive(Debug, Deserialize)]
 pub struct Style {
     pub font: String,
@@ -101,8 +117,7 @@ pub struct Style {
 
     /// Additional structural headings, appended (together with
     /// `bibliography_heading`, `appendix_prefix`, `main_part_heading`) to
-    /// form the effective structural-headings list. Use this to localize
-    /// the converter without touching the code.
+    /// form the effective structural-headings list.
     #[serde(default)]
     pub extra_structural_headings: Vec<String>,
 
@@ -149,7 +164,7 @@ pub struct Style {
     pub subsection_after_skip: String,
 
     /// Default appendix designator used when an appendix heading contains
-    /// no explicit letter (e.g. "APPENDIX" with no "A").
+    /// no explicit letter.
     #[serde(default = "default_appendix_default_letter")]
     pub appendix_default_letter: String,
 
@@ -175,7 +190,12 @@ pub struct Style {
     pub other_language: String,
 }
 
-// ── Localizable labels used in captions and section titles ────────────────
+// ── Localizable labels used by the converter ──────────────────────────────
+//
+// These are the names the **converter** injects into LaTeX (`\figurename`,
+// `\tablename`, `\contentsname`, and the "continued / end of table"
+// prefixes). They are language-level, not institution-level, and so belong
+// to the config rather than to a template.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Labels {
     #[serde(default = "default_table_continued")]
@@ -238,14 +258,18 @@ fn default_bibliography_heading() -> String { "REFERENCES".into() }
 fn default_language() -> String { "english".into() }
 fn default_other_language() -> String { "russian".into() }
 
+/// Default for the `[extra]` table: an empty TOML table, so `extra.*`
+/// resolves to "undefined" in Tera and `| default(...)` works as expected.
+fn default_extra() -> toml::Value {
+    toml::Value::Table(toml::Table::new())
+}
+
 impl Style {
     /// Effective list of structural (top-level) headings.
     ///
     /// * If `structural_headings` is explicitly set, it is returned as-is.
     /// * Otherwise the list is composed from `extra_structural_headings`
     ///   plus the three special headings.
-    ///
-    /// Order is irrelevant: callers only test membership.
     pub fn structural_list(&self) -> Vec<String> {
         if !self.structural_headings.is_empty() {
             return self.structural_headings.clone();
@@ -297,11 +321,13 @@ pub struct Student {
     pub student_id: String,
 }
 
-/// Title page data and localized boilerplate.
+/// Domain data shown on the title page.
 ///
-/// The `*_label` fields together with `ministry` / `org_line1` / `org_line2`
-/// hold the localized title-page text. They all have neutral English
-/// defaults and are meant to be overridden in the config file.
+/// Only universal "thesis title page" concepts live here: who, what, where,
+/// when. Institution-specific presentation (which ministry line to print,
+/// what labels to use, how the layout is structured) is not modelled here —
+/// that belongs to the title-page template, optionally overridden via
+/// `[extra]`.
 #[derive(Debug, Deserialize)]
 pub struct Title {
     pub university: String,
@@ -327,43 +353,7 @@ pub struct Title {
     pub reviewer: String,
     pub year: String,
     pub city: String,
-
-    // ── Localized title-page boilerplate ───────────────────────────────
-    #[serde(default = "default_ministry")]
-    pub ministry: String,
-    #[serde(default = "default_org_line1")]
-    pub org_line1: String,
-    #[serde(default = "default_org_line2")]
-    pub org_line2: String,
-    #[serde(default = "default_institute_label")]
-    pub institute_label: String,
-    #[serde(default = "default_department_label")]
-    pub department_label: String,
-    #[serde(default = "default_topic_label")]
-    pub topic_label: String,
-    #[serde(default = "default_supervisor_label")]
-    pub supervisor_label: String,
-    #[serde(default = "default_student_label")]
-    pub student_label: String,
-    #[serde(default = "default_group_id_label")]
-    pub group_id_label: String,
-    #[serde(default = "default_signature_label")]
-    pub signature_label: String,
-    #[serde(default = "default_name_label")]
-    pub name_label: String,
 }
-
-fn default_ministry() -> String { "Ministry of Science and Higher Education".into() }
-fn default_org_line1() -> String { "Federal State Autonomous".into() }
-fn default_org_line2() -> String { "Educational Institution of Higher Education".into() }
-fn default_institute_label() -> String { "institute".into() }
-fn default_department_label() -> String { "department".into() }
-fn default_topic_label() -> String { "project topic".into() }
-fn default_supervisor_label() -> String { "Supervisor".into() }
-fn default_student_label() -> String { "Student".into() }
-fn default_group_id_label() -> String { "group number, student ID".into() }
-fn default_signature_label() -> String { "signature, date".into() }
-fn default_name_label() -> String { "initials, surname".into() }
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Bibliography {
@@ -445,9 +435,8 @@ impl Default for Lists {
 ///
 /// Both `base` and `title` are **file paths**, not document-type keys. A
 /// relative path is resolved against `dir`; an absolute path (or one
-/// starting with `..`) is used as-is via `Path::join`. This keeps the code
-/// agnostic of any particular institution's template layout: to use a
-/// different title page, simply point `title` at another file.
+/// starting with `..`) is used as-is via `Path::join`. The code is
+/// completely agnostic of any particular institution's template layout.
 #[derive(Debug, Deserialize)]
 pub struct Templates {
     #[serde(default = "default_templates_dir")]

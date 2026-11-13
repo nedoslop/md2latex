@@ -64,7 +64,7 @@ appendix_default_letter = "А"
 main_part_heading       = "ОСНОВНАЯ ЧАСТЬ"
 bibliography_heading    = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
 
-# ---- localized labels (captions, ToC title, etc.) ----
+# ---- localized labels used by the converter ----
 [labels]
 table_continued = "Продолжение таблицы"
 table_ended     = "Окончание таблицы"
@@ -93,6 +93,8 @@ hbadness = 10000
 # `dir` is the base directory for relative `base` / `title` paths. A path
 # that is absolute (or starts with `..`) is used as-is. Both `base` and
 # `title` are plain file paths — no document-type mapping is involved.
+# To use another institution's title page, point `title` at a different
+# `.tex.tera` file. No Rust changes required.
 dir   = "templates"
 base  = "base.tex.tera"
 title = "title_course.tex.tera"
@@ -122,19 +124,6 @@ reviewer = ""
 year = "2026"
 city = "Красноярск"
 
-# ---- title-page boilerplate (localizable) ----
-ministry        = "Министерство науки и высшего образования РФ"
-org_line1       = "Федеральное государственное автономное"
-org_line2       = "образовательное учреждение высшего образования"
-institute_label = "институт"
-department_label = "кафедра"
-topic_label     = "тема проекта (работы)"
-supervisor_label = "Руководитель"
-student_label   = "Студент"
-group_id_label  = "номер группы, зачетной книжки"
-signature_label = "подпись, дата"
-name_label      = "инициалы, фамилия"
-
 [[title.students]]
 name = "И. И. Иванов"
 
@@ -144,3 +133,26 @@ student_id = "987654321"
 
 [bibliography]
 use_biblatex = false
+
+# ─────────────────────────────────────────────────────────────────────────
+# [extra] — free-form override / extension namespace.
+#
+# The whole table is passed to the templates as `extra.*`. Every value
+# below is OPTIONAL: the title template already ships with the SFU
+# defaults (see templates/title_course.tex.tera). Uncomment only what you
+# need to override, or add any new key your custom template expects.
+#
+# Example overrides for a different Russian university:
+#
+# [extra]
+# ministry       = "Министерство образования и науки РФ"
+# org_line1      = "Федеральное государственное бюджетное"
+# org_line2      = "образовательное учреждение высшего образования"
+# institute_label = "факультет"
+# supervisor_label = "Научный руководитель"
+#
+# Any custom key is available as `{{ extra.my_key }}` in custom templates:
+#
+# [extra]
+# dean_name = "И. И. Иванов"
+# -->

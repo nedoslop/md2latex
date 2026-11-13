@@ -1,12 +1,19 @@
 //! LaTeX template rendering via Tera.
 //!
-//! All strings that reach the final document are either user content or
-//! pulled from the configuration; the code below only wires context keys.
+//! All strings that reach the final document are either user content, the
+//! template itself, or pulled from the configuration. The Rust side never
+//! decides what a title page looks like: it only exposes a generic context
+//! (`title.*`, `style.*`, `labels.*`, and the free-form `extra.*` namespace)
+//! and lets the template choose what to render.
 //!
-//! Template files are selected by explicit paths from the config (see
-//! [`crate::config::Templates`]) — there is no implicit "document type →
-//! template" mapping, which keeps this module independent of any
-//! particular institution's template layout.
+//! Institution-specific boilerplate (ministry line, organisation lines,
+//! signature labels) is defined **inside** the title template with
+//! `{% set x = extra.x | default(value="…") %}`. This means:
+//!
+//! * the template file is the single source of truth for the layout;
+//! * any value can be overridden from the config via `[extra]`;
+//! * swapping to another institution is a matter of pointing `templates.title`
+//!   at a different file — no code changes.
 
 use crate::config::{Config, Student};
 use anyhow::{Context, Result};
@@ -30,6 +37,10 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
 
     let mut ctx = TeraContext::new();
     fill_title_context(&mut ctx, cfg);
+    // `extra` is passed through verbatim: whatever the user puts in the
+    // `[extra]` table of the TOML config is available as `extra.*` inside
+    // every template.
+    ctx.insert("extra", &cfg.extra);
     let title_rendered = tera.render("title.tex.tera", &ctx)?;
 
     ctx.insert("title_page", &title_rendered);
@@ -106,7 +117,8 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     // Labels
     ctx.insert("labels", &cfg.labels);
 
-    // Title meta
+    // Title meta (used by base template for PDF metadata and by the title
+    // page itself).
     ctx.insert("topic", &cfg.title.topic);
     ctx.insert("student_author", &collect_author(&cfg.title));
 
@@ -129,7 +141,10 @@ fn collect_author(t: &crate::config::Title) -> String {
     names.join(", ")
 }
 
-/// Fills the title-page context with all localized fields.
+/// Fills the title-page context with the typed domain fields.
+///
+/// Nothing institution-specific is inserted here — those live in the
+/// template and can be overridden via `extra.*`.
 fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     let t = &cfg.title;
     let fill = cfg.style.title_page_fill_empty;
@@ -187,19 +202,6 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     ctx.insert("reviewer", &fill_or_blank(&t.reviewer, fill));
     ctx.insert("year", &t.year);
     ctx.insert("city", &t.city);
-
-    // Localized title-page boilerplate.
-    ctx.insert("ministry", &t.ministry);
-    ctx.insert("org_line1", &t.org_line1);
-    ctx.insert("org_line2", &t.org_line2);
-    ctx.insert("institute_label", &t.institute_label);
-    ctx.insert("department_label", &t.department_label);
-    ctx.insert("topic_label", &t.topic_label);
-    ctx.insert("supervisor_label", &t.supervisor_label);
-    ctx.insert("student_label", &t.student_label);
-    ctx.insert("group_id_label", &t.group_id_label);
-    ctx.insert("signature_label", &t.signature_label);
-    ctx.insert("name_label", &t.name_label);
 }
 
 /// Replaces an empty string with a neutral placeholder rule when
