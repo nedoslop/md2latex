@@ -102,6 +102,10 @@
 }
 \makeatother
 
+% Разрешаем переносы в словах с дефисом (например, LaTeX-документа)
+\lccode`\-=`\-
+\defaulthyphenchar=127
+
 % Список использованных источников (1., 2., 3.)
 \newlist{stubiblist}{enumerate}{1}
 \setlist[stubiblist]{
