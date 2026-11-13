@@ -682,25 +682,17 @@ fn render_table<'a>(
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
 
+        // Линия для промежуточных страниц
         out.push_str("  \\hline\n  \\endfoot\n");
         
-        // УБИРАЕМ \hline из \endlastfoot, чтобы избежать дублирования линии
+        // НЕ ставим \hline в \endlastfoot — это вызывает дублирование линии
         out.push_str("  \\endlastfoot\n");
 
-        // Данные
-        let data_count = rows.len() - 1;
-        for (i, row) in rows.iter().skip(1).enumerate() {
+        // Данные: \hline после КАЖДОЙ строки (включая последнюю)
+        for row in rows.iter().skip(1) {
             out.push_str("  ");
             out.push_str(&row.join(" & "));
-            out.push_str(" \\\\\n");
-            if i < data_count - 1 {
-                out.push_str("  \\hline\n");
-            }
-        }
-        
-        // Добавляем нижнюю линию после последней строки данных
-        if data_count > 0 {
-            out.push_str("  \\hline\n");
+            out.push_str(" \\\\\n  \\hline\n");
         }
         
         out.push_str("  \\end{xltabular}\n  }\n\n");
