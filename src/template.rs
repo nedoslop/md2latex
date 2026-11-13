@@ -85,6 +85,7 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("lb_exhyphen_penalty", &cfg.line_breaking.exhyphen_penalty);
     ctx.insert("lb_emergencystretch", &cfg.line_breaking.emergencystretch);
     ctx.insert("lb_tolerance", &cfg.line_breaking.tolerance);
+    ctx.insert("lb_hbadness", &cfg.line_breaking.hbadness); // <-- ДОБАВЛЕНО
 
     // Title meta
     ctx.insert("topic", &cfg.title.topic);
@@ -144,7 +145,6 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
             student_id: t.student_id.clone(),
         }]
     } else {
-        // пустая строка — для рукописного заполнения на распечатке
         vec![Student {
             name: if fill {
                 "________".into()

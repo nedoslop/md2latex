@@ -51,6 +51,7 @@ hyphen_penalty = 50
 exhyphen_penalty = 50
 emergencystretch = "2em"
 tolerance = 9999
+hbadness = 10000
 
 [templates]
 dir = "templates"

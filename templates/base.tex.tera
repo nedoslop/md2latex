@@ -39,6 +39,7 @@
 \hyphenpenalty={{ lb_hyphen_penalty }}
 \exhyphenpenalty={{ lb_exhyphen_penalty }}
 \tolerance={{ lb_tolerance }}
+\hbadness={{ lb_hbadness }} % <-- ДОБАВЛЕНО: подавляет предупреждения Underfull \hbox
 
 % ========== Интервалы и абзацы ==========
 \usepackage{setspace}
@@ -55,7 +56,7 @@
 \usepackage{float}
 \usepackage{array}
 \usepackage{tabularx}
-\usepackage{xltabular} % <-- ДОБАВЛЕНО ДЛЯ ПЕРЕНОСА ТАБЛИЦ
+\usepackage{xltabular}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 \renewcommand{\arraystretch}{1.2}
 \usepackage{amsmath,amssymb}

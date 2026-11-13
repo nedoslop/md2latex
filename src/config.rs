@@ -271,11 +271,14 @@ pub struct LineBreaking {
     #[serde(default = "default_true")]             pub sloppy: bool,
     #[serde(default = "default_emergencystretch")] pub emergencystretch: String,
     #[serde(default = "default_tolerance")]        pub tolerance: i32,
+    #[serde(default = "default_hbadness")]         pub hbadness: i32, // <-- ДОБАВЛЕНО
 }
 fn default_hyphen_penalty() -> i32 { 50 }
 fn default_exhyphen_penalty() -> i32 { 50 }
 fn default_emergencystretch() -> String { "2em".into() }
 fn default_tolerance() -> i32 { 9999 }
+fn default_hbadness() -> i32 { 10000 } // <-- ДОБАВЛЕНО
+
 impl Default for LineBreaking {
     fn default() -> Self {
         Self {
@@ -284,6 +287,7 @@ impl Default for LineBreaking {
             sloppy: true,
             emergencystretch: "2em".into(),
             tolerance: 9999,
+            hbadness: 10000, // <-- ДОБАВЛЕНО
         }
     }
 }
