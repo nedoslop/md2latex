@@ -73,6 +73,9 @@ fn compile_pdf(tex_path: &Path) -> Result<()> {
     }
 
     run_latex(dir, args)?;
+    // добавлено: третий прогон — стабилизация номеров страниц в оглавлении
+    // и перекрёстных ссылок \ref{} при длинном ToC
+    run_latex(dir, args)?;
 
     println!("✅ PDF готов: {}", dir.join("main.pdf").display());
     Ok(())

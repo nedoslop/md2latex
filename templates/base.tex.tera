@@ -135,17 +135,21 @@
 % ========== Заголовки разделов ==========
 \usepackage[indentafter]{titlesec}
 
+% Скобки { } вокруг label и before-code — литеральные (вне Tera-тегов),
+% иначе при section_align = "raggedright"/"center" открывающая { теряется
+% и xelatex падает с "Too many }'s".
 \titleformat{\section}[block]
-  {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
-  {\hspace{\parindent}\thesection}{0.5em}
-  {}
-\titlespacing*{\section}{0pt}{0pt}{\baselineskip}
+  {\normalfont{% if section_bold %}\bfseries{% endif %}{% if section_align == "center" %}\centering{% else %}\raggedright{% endif %}\hyphenpenalty=10000\exhyphenpenalty=10000}
+  { {% if section_align != "center" %}\hspace{\parindent}{% endif %}\thesection }
+  {0.5em}
+  {% if section_uppercase %}{\MakeUppercase}{% else %}{}{% endif %}
+\titlespacing*{\section}{0pt}{ {{- section_before_skip | trim -}} }{ {{- section_after_skip | trim -}} }
 
 \titleformat{\subsection}[block]
   {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
   {\hspace{\parindent}\thesubsection}{0.5em}
   {}
-\titlespacing*{\subsection}{0pt}{\baselineskip}{\baselineskip}
+\titlespacing*{\subsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
 
 \titleformat{\subsubsection}[block]
   {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
@@ -166,6 +170,10 @@
 \setlength{\cftbeforesecskip}{2pt}
 \setlength{\cftbeforesubsecskip}{2pt}
 \renewcommand{\cftdotsep}{1.5}
+% Отступы в оглавлении по п. 6.4.4 СТУ 7.5-07 (шаг ~2 знака)
+\setlength{\cftsecindent}{0em}
+\setlength{\cftsubsecindent}{1em}
+\setlength{\cftsubsubsecindent}{2em}
 
 % ========== Ссылки ==========
 {% if links_colored %}
@@ -189,8 +197,6 @@
 \usepackage{xurl}
 
 % ========== Кликабельные точки в содержании ==========
-% \hyperlink обёрнут в \hbox{} и вынесен из математического режима,
-% иначе PDF-аннотация не создаётся корректно.
 {% if toc_clickable_dots %}
 {% raw %}
 \makeatletter

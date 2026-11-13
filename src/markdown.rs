@@ -99,6 +99,23 @@ fn render_node<'a>(
                     } else {
                         render_structural_heading(&clean, out, cfg)?;
                     }
+                } else {
+                    // добавлено: H1 вне structural_list не теряем, трактуем как \section
+                    eprintln!(
+                        "⚠️  H1-заголовок вне structural_list: '{}' — трактую как \\section",
+                        clean
+                    );
+                    *in_bibliography = false;
+                    *ctx = Ctx::StructuralNumbered;
+                    if *skip_next_section_pagebreak {
+                        *skip_next_section_pagebreak = false;
+                    } else {
+                        out.push_str("\\clearpage\n");
+                    }
+                    out.push_str(&format!(
+                        "\\section{{{}}}\n\n",
+                        escape_latex(&to_title_case_if_upper(&clean))
+                    ));
                 }
             } else {
                 *in_bibliography = false;
@@ -341,6 +358,13 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
     } else {
         to_title_case_if_upper(text)
     };
+
+    // добавлено: «ОСНОВНАЯ ЧАСТЬ» — управляющий маркер, в PDF и в ToC не выводится
+    // (Приложение Т СТУ 7.5-07: в содержании нет отдельной строки «ОСНОВНАЯ ЧАСТЬ»).
+    if display.trim().to_uppercase() == cfg.style.main_part_heading.trim().to_uppercase() {
+        return Ok(());
+    }
+
     out.push_str(&format!(
         "\\phantomsection\n\
          \\addcontentsline{{toc}}{{section}}{{{}}}\n\
@@ -595,7 +619,12 @@ fn render_table<'a>(
     if cfg.style.table_caption_above {
         if let Some(ref m) = meta {
             if !m.caption.is_empty() {
-                out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(&m.caption)));
+                // изменено: точка в конце подписи таблицы обрезается всегда
+                // (п. 7.7.3 СТУ 7.5-07 — без точки в конце)
+                out.push_str(&format!(
+                    "  \\caption{{{}}}\n",
+                    escape_latex(m.caption.trim_end_matches('.'))
+                ));
             }
             if let Some(ref l) = m.label {
                 out.push_str(&format!("  \\label{{{}}}\n", l));

@@ -38,7 +38,7 @@ main_part_heading = "ОСНОВНАЯ ЧАСТЬ"
 bibliography_heading = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
 
 [lists]
-itemize_label = "\\textendash"
+itemize_label = "-"
 enumerate_label = "\\arabic*)"
 bibliography_label = "\\arabic*."
 

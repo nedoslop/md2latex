@@ -69,11 +69,11 @@ pub fn prepare_images(
             }
         }
 
-        if !dest.exists() {
-            if let Err(e) = fs::copy(&full_src, &dest) {
-                eprintln!("⚠️  Не удалось скопировать {}: {}", full_src.display(), e);
-                return caps[0].to_string();
-            }
+        // изменено: всегда перезаписываем (fs::copy сам перезаписывает),
+        // чтобы обновлённые картинки попадали в out/images/ при повторной сборке
+        if let Err(e) = fs::copy(&full_src, &dest) {
+            eprintln!("⚠️  Не удалось скопировать {}: {}", full_src.display(), e);
+            return caps[0].to_string();
         }
 
         format!("![{}](images/{}{})", alt, sanitized, rest)
