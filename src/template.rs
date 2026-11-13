@@ -1,27 +1,29 @@
 use crate::config::Config;
 use anyhow::{Context, Result};
+use std::fs;
 use tera::{Context as TeraContext, Tera};
 
 pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
-    let mut tera = Tera::default();
-    tera.add_raw_template("base.tex.tera", include_str!("../templates/base.tex.tera"))?;
-    tera.add_raw_template("title_bachelor.tex.tera", include_str!("../templates/title_bachelor.tex.tera"))?;
-    tera.add_raw_template("title_master.tex.tera", include_str!("../templates/title_master.tex.tera"))?;
-    tera.add_raw_template("title_course.tex.tera", include_str!("../templates/title_course.tex.tera"))?;
+    let base_path  = cfg.templates.base_path();
+    let title_path = cfg.templates.title_path_for(&cfg.project.doc_type);
 
-    let title_template = match cfg.project.doc_type.as_str() {
-        "vkr_master" => "title_master.tex.tera",
-        "course_work" => "title_course.tex.tera",
-        _ => "title_bachelor.tex.tera",
-    };
+    let base_content = fs::read_to_string(&base_path)
+        .with_context(|| format!("Не удалось прочитать шаблон: {}", base_path.display()))?;
+    let title_content = fs::read_to_string(&title_path)
+        .with_context(|| format!("Не удалось прочитать шаблон: {}", title_path.display()))?;
+
+    let mut tera = Tera::default();
+    tera.add_raw_template("base.tex.tera",  &base_content)?;
+    tera.add_raw_template("title.tex.tera", &title_content)?;
 
     let mut ctx = TeraContext::new();
     fill_title_context(&mut ctx, cfg);
-    let title_rendered = tera.render(title_template, &ctx)?;
+    let title_rendered = tera.render("title.tex.tera", &ctx)?;
 
     ctx.insert("title_page", &title_rendered);
     ctx.insert("body", body);
 
+    // ── Style ────────────────────────────────────────────────────────
     ctx.insert("font", &cfg.style.font);
     ctx.insert("font_fallback", &cfg.style.font_fallback);
     ctx.insert("font_size", &cfg.style.font_size);
@@ -47,6 +49,7 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("subsection_before_skip", &cfg.style.subsection_before_skip);
     ctx.insert("subsection_after_skip", &cfg.style.subsection_after_skip);
 
+    // ── Links ───────────────────────────────────────────────────────
     ctx.insert("links_colored", &cfg.links.colored);
     ctx.insert("links_link_color", &cfg.links.link_color);
     ctx.insert("links_cite_color", &cfg.links.cite_color);
@@ -55,13 +58,36 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
 
     ctx.insert("images_interpolate", &cfg.images.interpolate);
 
+    // ── Biblatex ────────────────────────────────────────────────────
     ctx.insert("use_biblatex", &cfg.bibliography.use_biblatex);
-    ctx.insert("bib_file", &cfg.project.bib_file.clone().unwrap_or_else(|| "refs.bib".into()));
+    ctx.insert(
+        "bib_file",
+        &cfg.project.bib_file.clone().unwrap_or_else(|| "refs.bib".into()),
+    );
 
+    // ── Списки ──────────────────────────────────────────────────────
+    ctx.insert("itemize_label", &cfg.lists.itemize_label);
+    ctx.insert("enumerate_label", &cfg.lists.enumerate_label);
+
+    // ── TOC ─────────────────────────────────────────────────────────
+    ctx.insert("toc_clickable_dots", &cfg.toc.clickable_dots);
+
+    // ── Переносы строк ──────────────────────────────────────────────
+    ctx.insert("lb_sloppy", &cfg.line_breaking.sloppy);
+    ctx.insert("lb_hyphen_penalty", &cfg.line_breaking.hyphen_penalty);
+    ctx.insert("lb_exhyphen_penalty", &cfg.line_breaking.exhyphen_penalty);
+    ctx.insert("lb_emergencystretch", &cfg.line_breaking.emergencystretch);
+    ctx.insert("lb_tolerance", &cfg.line_breaking.tolerance);
+
+    // ── Title meta ─────────────────────────────────────────────────
     ctx.insert("topic", &cfg.title.topic);
-    ctx.insert("student_author", &fill_or_blank(&cfg.title.student, cfg.style.title_page_fill_empty));
+    ctx.insert(
+        "student_author",
+        &fill_or_blank(&cfg.title.student, cfg.style.title_page_fill_empty),
+    );
 
-    tera.render("base.tex.tera", &ctx).context("Ошибка рендеринга base.tex.tera")
+    tera.render("base.tex.tera", &ctx)
+        .context("Ошибка рендеринга base.tex.tera")
 }
 
 fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
@@ -85,7 +111,11 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
 }
 
 fn fill_or_blank(value: &str, fill: bool) -> String {
-    if value.trim().is_empty() && fill { "________".to_string() } else { value.to_string() }
+    if value.trim().is_empty() && fill {
+        "________".to_string()
+    } else {
+        value.to_string()
+    }
 }
 
 fn compute_baseline(size: &str) -> String {

@@ -21,21 +21,43 @@ paragraph_indent = "12.5mm"
 line_spacing = "onehalf"
 numbering = "within_section"
 
-# По СТУ заголовки разделов выравниваются по левому краю (с абзацного отступа), не КАПСОМ
 section_align = "raggedright"
 section_bold = true
 section_uppercase = false
 
 caption_font_size = "14pt"
-# По СТУ допускается шрифт в таблицах 10, 12 или 14 пт (12 пт - оптимально)
-table_font_size = "12pt"
+table_font_size   = "12pt"
 
-# Структурные заголовки (ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ и т.д.) - КАПСОМ и по центру
 structural_heading_uppercase = true
-
 figure_caption_below = true
-table_caption_above = true
+table_caption_above  = true
 default_figure_width = "0.8"
+
+appendix_prefix = "ПРИЛОЖЕНИЕ"
+main_part_heading = "ОСНОВНАЯ ЧАСТЬ"
+bibliography_heading = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
+
+[lists]
+itemize_label = "\\textendash"
+enumerate_label = "\\arabic*)"
+bibliography_label = "\\arabic*."
+
+[toc]
+clickable_dots = true
+
+[line_breaking]
+sloppy = true
+hyphen_penalty = 50
+exhyphen_penalty = 50
+emergencystretch = "2em"
+tolerance = 9999
+
+[templates]
+dir = "templates"
+base = "base.tex.tera"
+title_course = "title_course.tex.tera"
+title_bachelor = "title_bachelor.tex.tera"
+title_master = "title_master.tex.tera"
 
 [links]
 colored = true

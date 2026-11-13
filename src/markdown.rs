@@ -83,8 +83,11 @@ fn render_node<'a>(
                         out.push_str("\\clearpage\n");
                     }
                     let upper = clean.trim().to_uppercase();
-                    *in_bibliography = upper == "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ";
-                    *skip_next_section_pagebreak = upper == "ОСНОВНАЯ ЧАСТЬ";
+
+                    *in_bibliography =
+                        upper == cfg.style.bibliography_heading.trim().to_uppercase();
+                    *skip_next_section_pagebreak =
+                        upper == cfg.style.main_part_heading.trim().to_uppercase();
 
                     let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
                     *ctx = if unnumbered {
@@ -215,13 +218,15 @@ fn render_node<'a>(
         NodeValue::List(list) => {
             let is_ordered = list.list_type == comrak::nodes::ListType::Ordered;
             let env = if is_ordered { "enumerate" } else { "itemize" };
-            let opts = if is_ordered && *in_bibliography {
-                "[label=\\arabic*.]"
+
+            // Метка для данного конкретного списка
+            let label_opt = if is_ordered && *in_bibliography {
+                format!("[label={}]", cfg.lists.bibliography_label)
             } else {
-                ""
+                String::new()
             };
 
-            out.push_str(&format!("\\begin{{{}}}{}\n", env, opts));
+            out.push_str(&format!("\\begin{{{}}}{}\n", env, label_opt));
             for child in node.children() {
                 if let NodeValue::Item(_) = &child.data.borrow().value {
                     let mut item = String::new();
@@ -275,9 +280,10 @@ fn render_node<'a>(
 
 fn is_structural(text: &str, cfg: &Config) -> bool {
     let t = text.trim().to_uppercase();
+    let appendix_upper = cfg.style.appendix_prefix.trim().to_uppercase();
     cfg.style.structural_list().iter().any(|h| {
         let up = h.trim().to_uppercase();
-        t == up || (up == "ПРИЛОЖЕНИЕ" && t.starts_with("ПРИЛОЖЕНИЕ "))
+        t == up || (up == appendix_upper && t.starts_with(&format!("{} ", appendix_upper)))
     })
 }
 
@@ -287,17 +293,8 @@ fn normalize_dashes(text: &str) -> String {
 
 fn is_appendix_heading(text: &str, cfg: &Config) -> bool {
     let t = text.trim().to_uppercase();
-    if let Some(app) = cfg
-        .style
-        .structural_list()
-        .iter()
-        .find(|h| h.trim().eq_ignore_ascii_case("ПРИЛОЖЕНИЕ"))
-    {
-        let prefix = format!("{} ", app.trim().to_uppercase());
-        t.starts_with(&prefix)
-    } else {
-        false
-    }
+    let prefix = cfg.style.appendix_prefix.trim().to_uppercase();
+    t == prefix || t.starts_with(&format!("{} ", prefix))
 }
 
 fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Result<()> {
@@ -317,20 +314,24 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
     Ok(())
 }
 
-fn render_appendix_heading(text: &str, out: &mut String, _cfg: &Config) -> Result<()> {
-    // Ожидаем заголовок вида "ПРИЛОЖЕНИЕ А Название приложения" или "ПРИЛОЖЕНИЕ А"
+fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result<()> {
     let trimmed = text.trim();
-    let rest = trimmed
-        .strip_prefix("ПРИЛОЖЕНИЕ")
-        .or_else(|| trimmed.strip_prefix("Приложение"))
-        .unwrap_or(trimmed)
-        .trim();
+    let prefix_upper = cfg.style.appendix_prefix.trim().to_uppercase();
+
+    // Регистронезависимо срезаем префикс
+    let rest = if trimmed.len() >= prefix_upper.len()
+        && trimmed[..prefix_upper.len()].to_uppercase() == prefix_upper
+    {
+        trimmed[prefix_upper.len()..].trim()
+    } else {
+        trimmed
+    };
 
     let mut parts = rest.splitn(2, char::is_whitespace);
     let letter = parts.next().unwrap_or("А").to_uppercase();
     let title = parts.next().unwrap_or("").trim();
 
-    let app_label = format!("ПРИЛОЖЕНИЕ {}", letter);
+    let app_label = format!("{} {}", cfg.style.appendix_prefix, letter);
     let toc_entry = if title.is_empty() {
         app_label.clone()
     } else {

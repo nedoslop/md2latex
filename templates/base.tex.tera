@@ -34,10 +34,11 @@
 
 % ========== Выравнивание правого края и переносы ==========
 \usepackage[protrusion=true,expansion=false]{microtype}
-\sloppy
-\emergencystretch=2em
-\hyphenpenalty=50
-\exhyphenpenalty=50
+{% if lb_sloppy %}\sloppy{% endif %}
+\emergencystretch={{ lb_emergencystretch }}
+\hyphenpenalty={{ lb_hyphen_penalty }}
+\exhyphenpenalty={{ lb_exhyphen_penalty }}
+\tolerance={{ lb_tolerance }}
 
 % ========== Интервалы и абзацы ==========
 \usepackage{setspace}
@@ -82,16 +83,15 @@
 
 % ========== Списки (СТУ 7.4.3) ==========
 \usepackage{enumitem}
-% Маркер с красной строки (12.5мм), последующие строки от левого поля (leftmargin=0pt)
 \setlist[itemize]{
-  label=\textendash,
+  label={{ itemize_label }},
   wide=\parindent,
   leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
 \setlist[enumerate]{
-  label=\arabic*), % цифра с круглой скобкой по СТУ 7.4.3
+  label={{ enumerate_label }},
   wide=\parindent,
   leftmargin=0pt,
   labelsep=0.5em,
@@ -157,6 +157,7 @@
 \renewcommand{\cftdotsep}{1.5}
 
 % Делаем точки (leaders) в содержании частью кликабельной ссылки hyperref
+{% if toc_clickable_dots %}
 {% raw %}
 \makeatletter
 \let\old@contentsline\contentsline
@@ -174,6 +175,7 @@
 }
 \makeatother
 {% endraw %}
+{% endif %}
 
 % ========== Ссылки ==========
 {% if links_colored %}
