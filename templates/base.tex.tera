@@ -55,6 +55,7 @@
 \usepackage{float}
 \usepackage{array}
 \usepackage{tabularx}
+\usepackage{xltabular} % <-- ДОБАВЛЕНО ДЛЯ ПЕРЕНОСА ТАБЛИЦ
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 \renewcommand{\arraystretch}{1.2}
 \usepackage{amsmath,amssymb}
@@ -75,6 +76,15 @@
   labelsep=stu,
   justification=raggedright,
   position={% if table_caption_above %}top{% else %}bottom{% endif %},
+  singlelinecheck=false,
+  font={normalsize},
+  skip=4pt,
+  indention=0pt
+}
+\captionsetup[longtable]{
+  labelsep=stu,
+  justification=raggedright,
+  position=top,
   singlelinecheck=false,
   font={normalsize},
   skip=4pt,
@@ -139,9 +149,6 @@
 % ========== Заголовки разделов ==========
 \usepackage[indentafter]{titlesec}
 
-% Скобки { } вокруг label и before-code — литеральные (вне Tera-тегов),
-% иначе при section_align = "raggedright"/"center" открывающая { теряется
-% и xelatex падает с "Too many }'s".
 \titleformat{\section}[block]
   {\normalfont{% if section_bold %}\bfseries{% endif %}{% if section_align == "center" %}\centering{% else %}\raggedright{% endif %}\hyphenpenalty=10000\exhyphenpenalty=10000}
   { {{- "" -}}{% if section_align != "center" %}\hspace{\parindent}{% endif %}\thesection}

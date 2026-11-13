@@ -138,7 +138,6 @@ impl Style {
     }
 }
 
-// ── Student ─────────────────────────────────────────────────────────────
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Student {
     #[serde(default)] pub name: String,
@@ -156,12 +155,9 @@ pub struct Title {
     pub direction_name: String,
     pub topic: String,
 
-    // legacy single student (optional)
     #[serde(default)] pub student: String,
     #[serde(default)] pub student_id: String,
     #[serde(default)] pub group: String,
-
-    // new: multiple students (overrides legacy if non-empty)
     #[serde(default)] pub students: Vec<Student>,
 
     pub supervisor: String,
