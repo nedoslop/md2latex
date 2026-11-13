@@ -246,9 +246,10 @@ fn render_node<'a>(
                 }
             }
             if has_image && !has_text {
+                // Lone image in its own paragraph → real figure float.
                 for child in node.children() {
                     if let NodeValue::Image(link) = &child.data.borrow().value {
-                        render_image(child, link, out, cfg)?;
+                        render_image_block(child, link, out, cfg)?;
                     }
                 }
             } else {
@@ -270,7 +271,7 @@ fn render_node<'a>(
             let meta = pending.take();
             render_table(node, out, meta, cfg)?;
         }
-        NodeValue::Image(link) => render_image(node, &link, out, cfg)?,
+        NodeValue::Image(link) => render_image_block(node, &link, out, cfg)?,
         NodeValue::BlockQuote => {
             out.push_str("\\begin{quote}\n");
             for child in node.children() {
@@ -588,7 +589,10 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
                 }
             }
             NodeValue::SoftBreak | NodeValue::LineBreak => out.push(' '),
-            NodeValue::Image(link) => render_image(child, &link, out, cfg)?,
+            // Inline image (inside a table cell, list item, or mixed
+            // paragraph): NO figure float, NO \caption — just
+            // \includegraphics sized to the surrounding \linewidth.
+            NodeValue::Image(link) => render_image_inline(&link, out, cfg),
             NodeValue::Superscript => {
                 out.push_str("\\textsuperscript{");
                 render_inline(child, out, cfg)?;
@@ -660,7 +664,10 @@ fn parse_tildes(text: &str) -> String {
     result
 }
 
-fn render_image<'a>(
+/// Renders a **standalone** image (image alone in its own paragraph) as a
+/// real `figure` float with optional caption and label. Use this only in
+/// block contexts — never inside a table cell or list item.
+fn render_image_block<'a>(
     node: &'a AstNode<'a>,
     link: &NodeLink,
     out: &mut String,
@@ -721,6 +728,34 @@ fn render_image<'a>(
     }
     out.push_str("\\end{figure}\n\n");
     Ok(())
+}
+
+/// Renders an image in an **inline** context (table cell, list item, or
+/// paragraph that also contains text): just `\includegraphics`, sized to
+/// the surrounding `\linewidth`. No float, no `\caption`, no `\label` —
+/// the latter would require a float counter that we don't have here.
+fn render_image_inline(link: &NodeLink, out: &mut String, cfg: &Config) {
+    let src = &link.url;
+    // Default width for inline images: the current line/container width.
+    let (_, width, _) = parse_image_title(&link.title, "\\linewidth");
+
+    let width_spec = if width.contains("\\textwidth")
+        || width.contains("\\linewidth")
+        || width.contains('%')
+    {
+        width
+    } else {
+        format!("{}\\linewidth", width)
+    };
+    let interpolate_opt = if cfg.images.interpolate {
+        ",interpolate=true"
+    } else {
+        ""
+    };
+    out.push_str(&format!(
+        "\\includegraphics[width={}{}]{{{}}}",
+        width_spec, interpolate_opt, src
+    ));
 }
 
 fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, String, Option<String>) {
