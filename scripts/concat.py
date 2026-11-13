@@ -9,8 +9,9 @@ files = [
     'src/main.rs',
     'src/markdown.rs',
     'src/template.rs',
-    'templates/base.tex.tera',
-    'templates/title_course.tex.tera',
+    'profiles/sibfy/base.tex.tera',
+    'profiles/sibfy/course_work.tex.tera',
+    'profiles/sibfy/profile.toml',
     'md2latex.toml',
     'examples/input.md',
 ]
