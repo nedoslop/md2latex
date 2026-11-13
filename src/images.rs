@@ -83,11 +83,7 @@ pub fn prepare_images(
                     dest = target_name;
                     sanitized = dest.file_name().unwrap().to_string_lossy().to_string();
                 }
-                Err(e) => eprintln!(
-                    "warning: failed to convert {}: {}",
-                    full_src.display(),
-                    e
-                ),
+                Err(e) => eprintln!("warning: failed to convert {}: {}", full_src.display(), e),
             }
         }
 
@@ -108,8 +104,8 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
     match ext {
         "pdf" => raster_to_pdf(src, dst, dpi),
         "png" | "jpg" | "jpeg" | "bmp" | "gif" | "tiff" | "webp" => {
-            let img = image::open(src)
-                .with_context(|| format!("failed to open {}", src.display()))?;
+            let img =
+                image::open(src).with_context(|| format!("failed to open {}", src.display()))?;
             let format = match ext {
                 "png" => ImageFormat::Png,
                 "jpg" | "jpeg" => ImageFormat::Jpeg,

@@ -212,12 +212,24 @@ pub struct Labels {
     pub bibliography_name: String,
 }
 
-fn default_table_continued() -> String { "Continued table".into() }
-fn default_table_ended() -> String { "End of table".into() }
-fn default_figure_name() -> String { "Figure".into() }
-fn default_table_name() -> String { "Table".into() }
-fn default_contents_name() -> String { "CONTENTS".into() }
-fn default_bibliography_name() -> String { "REFERENCES".into() }
+fn default_table_continued() -> String {
+    "Continued table".into()
+}
+fn default_table_ended() -> String {
+    "End of table".into()
+}
+fn default_figure_name() -> String {
+    "Figure".into()
+}
+fn default_table_name() -> String {
+    "Table".into()
+}
+fn default_contents_name() -> String {
+    "CONTENTS".into()
+}
+fn default_bibliography_name() -> String {
+    "REFERENCES".into()
+}
 
 impl Default for Labels {
     fn default() -> Self {
@@ -232,31 +244,81 @@ impl Default for Labels {
     }
 }
 
-fn default_font_fallback() -> String { "TeX Gyre Termes".into() }
-fn default_font_size() -> String { "14pt".into() }
-fn default_margin_left() -> String { "30mm".into() }
-fn default_margin() -> String { "20mm".into() }
-fn default_paragraph_indent() -> String { "12.5mm".into() }
-fn default_line_spacing() -> String { "onehalf".into() }
-fn default_numbering() -> String { "within_section".into() }
-fn default_figure_width() -> String { "0.8".into() }
-fn default_true() -> bool { true }
-fn default_false() -> bool { false }
-fn default_main_font() -> String { "Times New Roman".into() }
-fn default_mono_font() -> String { "Courier New".into() }
-fn default_caption_font_size() -> String { "14pt".into() }
-fn default_table_font_size() -> String { "12pt".into() }
-fn default_section_align() -> String { "center".into() }
-fn default_section_before_skip() -> String { "12pt".into() }
-fn default_section_after_skip() -> String { "12pt".into() }
-fn default_subsection_before_skip() -> String { "12pt".into() }
-fn default_subsection_after_skip() -> String { "6pt".into() }
-fn default_appendix_default_letter() -> String { "A".into() }
-fn default_appendix_prefix() -> String { "APPENDIX".into() }
-fn default_main_part_heading() -> String { "MAIN PART".into() }
-fn default_bibliography_heading() -> String { "REFERENCES".into() }
-fn default_language() -> String { "english".into() }
-fn default_other_language() -> String { "russian".into() }
+fn default_font_fallback() -> String {
+    "TeX Gyre Termes".into()
+}
+fn default_font_size() -> String {
+    "14pt".into()
+}
+fn default_margin_left() -> String {
+    "30mm".into()
+}
+fn default_margin() -> String {
+    "20mm".into()
+}
+fn default_paragraph_indent() -> String {
+    "12.5mm".into()
+}
+fn default_line_spacing() -> String {
+    "onehalf".into()
+}
+fn default_numbering() -> String {
+    "within_section".into()
+}
+fn default_figure_width() -> String {
+    "0.8".into()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_false() -> bool {
+    false
+}
+fn default_main_font() -> String {
+    "Times New Roman".into()
+}
+fn default_mono_font() -> String {
+    "Courier New".into()
+}
+fn default_caption_font_size() -> String {
+    "14pt".into()
+}
+fn default_table_font_size() -> String {
+    "12pt".into()
+}
+fn default_section_align() -> String {
+    "center".into()
+}
+fn default_section_before_skip() -> String {
+    "12pt".into()
+}
+fn default_section_after_skip() -> String {
+    "12pt".into()
+}
+fn default_subsection_before_skip() -> String {
+    "12pt".into()
+}
+fn default_subsection_after_skip() -> String {
+    "6pt".into()
+}
+fn default_appendix_default_letter() -> String {
+    "A".into()
+}
+fn default_appendix_prefix() -> String {
+    "APPENDIX".into()
+}
+fn default_main_part_heading() -> String {
+    "MAIN PART".into()
+}
+fn default_bibliography_heading() -> String {
+    "REFERENCES".into()
+}
+fn default_language() -> String {
+    "english".into()
+}
+fn default_other_language() -> String {
+    "russian".into()
+}
 
 /// Default for the `[extra]` table: an empty TOML table, so `extra.*`
 /// resolves to "undefined" in Tera and `| default(...)` works as expected.
@@ -374,9 +436,15 @@ pub struct Links {
     #[serde(default = "default_false")]
     pub boxed: bool,
 }
-fn default_link_color() -> String { "black".into() }
-fn default_cite_color() -> String { "black".into() }
-fn default_url_color() -> String { "blue".into() }
+fn default_link_color() -> String {
+    "black".into()
+}
+fn default_cite_color() -> String {
+    "black".into()
+}
+fn default_url_color() -> String {
+    "blue".into()
+}
 impl Default for Links {
     fn default() -> Self {
         Self {
@@ -398,7 +466,9 @@ pub struct Images {
     #[serde(default = "default_dpi")]
     pub dpi: u32,
 }
-fn default_dpi() -> u32 { 300 }
+fn default_dpi() -> u32 {
+    300
+}
 impl Default for Images {
     fn default() -> Self {
         Self {
@@ -418,9 +488,15 @@ pub struct Lists {
     #[serde(default = "default_bibliography_label")]
     pub bibliography_label: String,
 }
-fn default_itemize_label() -> String { "\\textendash".into() }
-fn default_enumerate_label() -> String { "\\arabic*)".into() }
-fn default_bibliography_label() -> String { "\\arabic*.".into() }
+fn default_itemize_label() -> String {
+    "\\textendash".into()
+}
+fn default_enumerate_label() -> String {
+    "\\arabic*)".into()
+}
+fn default_bibliography_label() -> String {
+    "\\arabic*.".into()
+}
 impl Default for Lists {
     fn default() -> Self {
         Self {
@@ -453,9 +529,15 @@ pub struct Templates {
     pub title: String,
 }
 
-fn default_templates_dir() -> String { "templates".into() }
-fn default_base_template() -> String { "base.tex.tera".into() }
-fn default_title_template() -> String { "title.tex.tera".into() }
+fn default_templates_dir() -> String {
+    "templates".into()
+}
+fn default_base_template() -> String {
+    "base.tex.tera".into()
+}
+fn default_title_template() -> String {
+    "title.tex.tera".into()
+}
 
 impl Default for Templates {
     fn default() -> Self {
@@ -488,7 +570,9 @@ pub struct Toc {
 }
 impl Default for Toc {
     fn default() -> Self {
-        Self { clickable_dots: true }
+        Self {
+            clickable_dots: true,
+        }
     }
 }
 
@@ -507,11 +591,21 @@ pub struct LineBreaking {
     #[serde(default = "default_hbadness")]
     pub hbadness: i32,
 }
-fn default_hyphen_penalty() -> i32 { 50 }
-fn default_exhyphen_penalty() -> i32 { 50 }
-fn default_emergencystretch() -> String { "2em".into() }
-fn default_tolerance() -> i32 { 9999 }
-fn default_hbadness() -> i32 { 10000 }
+fn default_hyphen_penalty() -> i32 {
+    50
+}
+fn default_exhyphen_penalty() -> i32 {
+    50
+}
+fn default_emergencystretch() -> String {
+    "2em".into()
+}
+fn default_tolerance() -> i32 {
+    9999
+}
+fn default_hbadness() -> i32 {
+    10000
+}
 
 impl Default for LineBreaking {
     fn default() -> Self {
@@ -532,8 +626,7 @@ impl Config {
     pub fn from_file(path: &Path) -> Result<Self> {
         let raw = fs::read_to_string(path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        let mut cfg: Config =
-            toml::from_str(&raw).with_context(|| "invalid TOML configuration")?;
+        let mut cfg: Config = toml::from_str(&raw).with_context(|| "invalid TOML configuration")?;
 
         let cfg_dir = path.parent().unwrap_or_else(|| Path::new("."));
         if !Path::new(&cfg.templates.dir).is_absolute() {

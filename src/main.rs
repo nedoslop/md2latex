@@ -23,8 +23,7 @@ struct Cli {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let cfg =
-        config::Config::from_file(&cli.config).context("failed to load configuration")?;
+    let cfg = config::Config::from_file(&cli.config).context("failed to load configuration")?;
 
     if !cfg.project.doc_type.is_empty() {
         println!("Document type: {}", cfg.project.doc_type);
@@ -46,8 +45,8 @@ fn main() -> Result<()> {
     )
     .context("image preparation failed")?;
 
-    let body = markdown::markdown_to_latex(&md_prepared, &cfg)
-        .context("Markdown conversion failed")?;
+    let body =
+        markdown::markdown_to_latex(&md_prepared, &cfg).context("Markdown conversion failed")?;
 
     let full_latex =
         template::render_document(&cfg, &body).context("LaTeX template rendering failed")?;
