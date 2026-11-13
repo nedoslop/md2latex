@@ -89,6 +89,25 @@ emergencystretch = "2em"
 tolerance = 9999
 hbadness = 10000
 
+# ─────────────────────────────────────────────────────────────────────────
+# [code] — fenced code block syntax highlighting.
+#
+# enabled = false  → plain `verbatim`, no package loaded.
+# engine  = "listings"  (default) — no external deps, common languages built in;
+#                        Rust / Go / JavaScript definitions are added by the
+#                        base template.
+# engine  = "minted"            — uses Pygments; requires Python + Pygments
+#                        and -shell-escape for xelatex (the build system
+#                        adds the flag automatically). Best Unicode / language
+#                        coverage.
+# ─────────────────────────────────────────────────────────────────────────
+[code]
+enabled = true
+engine = "listings"
+font_size = "12pt"
+line_numbers = false
+frame = false
+
 [templates]
 # `dir` is the base directory for relative `base` / `title` paths. A path
 # that is absolute (or starts with `..`) is used as-is. Both `base` and

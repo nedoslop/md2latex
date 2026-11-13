@@ -117,6 +117,14 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     // Labels
     ctx.insert("labels", &cfg.labels);
 
+    // Code highlighting
+    ctx.insert("code_enabled", &cfg.code.enabled);
+    ctx.insert("code_engine", &cfg.code.engine);
+    ctx.insert("code_font_size", &cfg.code.font_size);
+    ctx.insert("code_baseline", &compute_baseline(&cfg.code.font_size));
+    ctx.insert("code_line_numbers", &cfg.code.line_numbers);
+    ctx.insert("code_frame", &cfg.code.frame);
+
     // Title meta (used by base template for PDF metadata and by the title
     // page itself).
     ctx.insert("topic", &cfg.title.topic);

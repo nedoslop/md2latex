@@ -6,7 +6,7 @@
 
 use crate::config::Config;
 use anyhow::Result;
-use comrak::nodes::{AstNode, NodeLink, NodeValue};
+use comrak::nodes::{AstNode, NodeCodeBlock, NodeLink, NodeValue};
 use comrak::{parse_document, Arena, ComrakOptions};
 use regex::Regex;
 
@@ -265,10 +265,7 @@ fn render_node<'a>(
             }
         }
         NodeValue::CodeBlock(code) => {
-            out.push_str(&format!(
-                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
-                code.literal.trim_end()
-            ));
+            render_code_block(&code, out, cfg);
         }
         NodeValue::List(_) => {
             render_list(node, out, cfg, *in_bibliography)?;
@@ -308,6 +305,89 @@ fn render_node<'a>(
         }
     }
     Ok(())
+}
+
+/// Renders a fenced code block, optionally with syntax highlighting.
+///
+/// * `cfg.code.enabled == false` → plain `verbatim`.
+/// * `cfg.code.engine == "minted"` → `minted` environment.
+/// * otherwise → `listings` environment.
+fn render_code_block(code: &NodeCodeBlock, out: &mut String, cfg: &Config) {
+    let literal = code.literal.trim_end();
+    let lang = code.info.split_whitespace().next().unwrap_or("").trim();
+
+    if !cfg.code.enabled {
+        out.push_str(&format!(
+            "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
+            literal
+        ));
+        return;
+    }
+
+    if cfg.code.engine.eq_ignore_ascii_case("minted") {
+        let m = map_minted_lang(lang);
+        out.push_str(&format!(
+            "\\begin{{minted}}{{{}}}\n{}\n\\end{{minted}}\n\n",
+            m, literal
+        ));
+    } else {
+        let l = map_listings_lang(lang);
+        if l.is_empty() {
+            out.push_str(&format!(
+                "\\begin{{lstlisting}}\n{}\n\\end{{lstlisting}}\n\n",
+                literal
+            ));
+        } else {
+            out.push_str(&format!(
+                "\\begin{{lstlisting}}[language={}]\n{}\n\\end{{lstlisting}}\n\n",
+                l, literal
+            ));
+        }
+    }
+}
+
+/// Maps a Markdown language tag to a `listings` language name.
+/// Returns an empty string if no mapping is known — the block will then
+/// be rendered without a `language=` option (still framed/typed).
+fn map_listings_lang(lang: &str) -> String {
+    match lang.to_lowercase().as_str() {
+        "c" => "C".into(),
+        "cpp" | "c++" | "cxx" | "cc" | "hpp" | "hxx" => "C++".into(),
+        "rust" | "rs" => "Rust".into(),
+        "python" | "py" => "Python".into(),
+        "java" => "Java".into(),
+        "js" | "javascript" => "JavaScript".into(),
+        "ts" | "typescript" => "JavaScript".into(),
+        "html" | "htm" => "HTML".into(),
+        "xml" => "XML".into(),
+        "bash" | "sh" | "shell" | "zsh" => "bash".into(),
+        "sql" => "SQL".into(),
+        "php" => "PHP".into(),
+        "ruby" | "rb" => "Ruby".into(),
+        "perl" => "Perl".into(),
+        "r" => "R".into(),
+        "matlab" => "Matlab".into(),
+        "go" | "golang" => "Go".into(),
+        _ => String::new(),
+    }
+}
+
+/// Maps a Markdown language tag to a Pygments/minted lexer name.
+/// Passes through unknown names — Pygments resolves many more than we can
+/// list here, so this only fixes common short aliases.
+fn map_minted_lang(lang: &str) -> String {
+    match lang.to_lowercase().as_str() {
+        "" => "text".into(),
+        "c++" | "cxx" | "cc" => "cpp".into(),
+        "rs" => "rust".into(),
+        "py" => "python".into(),
+        "js" => "javascript".into(),
+        "ts" => "typescript".into(),
+        "sh" | "shell" => "bash".into(),
+        "yml" => "yaml".into(),
+        "htm" => "html".into(),
+        other => other.into(),
+    }
 }
 
 fn render_list<'a>(

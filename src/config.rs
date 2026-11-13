@@ -42,6 +42,8 @@ pub struct Config {
     pub line_breaking: LineBreaking,
     #[serde(default)]
     pub labels: Labels,
+    #[serde(default)]
+    pub code: Code,
 
     /// Free-form key/value namespace injected verbatim into the template
     /// context under `extra.*`.
@@ -188,6 +190,48 @@ pub struct Style {
     /// Secondary language for polyglossia (e.g. "english").
     #[serde(default = "default_other_language")]
     pub other_language: String,
+}
+
+/// Syntax-highlighting settings for fenced code blocks.
+///
+/// When `enabled` is `false`, code blocks are rendered with `verbatim` and
+/// no highlighting package is loaded. When `enabled` is `true` and `engine`
+/// is `"listings"` (default), the bundled `listings` package is used. When
+/// `engine` is `"minted"`, the `minted` package is used instead — this
+/// requires Python + Pygments and that `xelatex` runs with `-shell-escape`
+/// (the build system adds that flag automatically for this engine).
+#[derive(Debug, Deserialize)]
+pub struct Code {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// `"listings"` (default) or `"minted"`.
+    #[serde(default = "default_code_engine")]
+    pub engine: String,
+    #[serde(default = "default_code_font_size")]
+    pub font_size: String,
+    #[serde(default = "default_false")]
+    pub line_numbers: bool,
+    #[serde(default = "default_true")]
+    pub frame: bool,
+}
+
+fn default_code_engine() -> String {
+    "listings".into()
+}
+fn default_code_font_size() -> String {
+    "12pt".into()
+}
+
+impl Default for Code {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            engine: default_code_engine(),
+            font_size: default_code_font_size(),
+            line_numbers: false,
+            frame: true,
+        }
+    }
 }
 
 // ── Localizable labels used by the converter ──────────────────────────────

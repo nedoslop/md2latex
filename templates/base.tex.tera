@@ -93,6 +93,75 @@
   indention=0pt
 }
 
+% ========== Code highlighting ==========
+{% if code_enabled %}
+{% if code_engine == "minted" %}
+\usepackage{minted}
+\setminted{
+  fontsize={{ code_font_size | trim }},
+  {% if code_line_numbers %}linenos=true,{% else %}linenos=false,{% endif %}
+  {% if code_frame %}frame=single,{% else %}frame=none,{% endif %}
+  breaklines=true,
+  tabsize=2,
+  autogobble=true,
+}
+{% else %}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\fontsize{ {{- code_font_size | trim -}} }{ {{- code_baseline | trim -}} }\selectfont,
+  extendedchars=true,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2,
+  {% if code_frame %}frame=single,{% else %}frame=none,{% endif %}
+  {% if code_line_numbers %}numbers=left,{% else %}numbers=none,{% endif %}
+  numberstyle=\tiny,
+  numbersep=5pt,
+  keywordstyle=\bfseries\color[rgb]{0.10,0.10,0.55},
+  commentstyle=\itshape\color[rgb]{0.10,0.50,0.10},
+  stringstyle=\color[rgb]{0.65,0.10,0.10},
+}
+
+% Custom language definitions for listings (not built in).
+\lstdefinelanguage{Rust}{
+  keywords={as,break,const,continue,crate,else,enum,extern,false,fn,for,
+            if,impl,in,let,loop,match,mod,move,mut,pub,ref,return,self,
+            Self,static,struct,super,trait,true,type,unsafe,use,where,
+            while,async,await,dyn},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]',
+}
+\lstdefinelanguage{Go}{
+  keywords={break,case,chan,const,continue,default,defer,else,
+            fallthrough,for,func,go,goto,if,import,interface,map,
+            package,range,return,select,struct,switch,type,var},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]`,
+}
+\lstdefinelanguage{JavaScript}{
+  keywords={break,case,catch,const,continue,debugger,default,delete,do,
+            else,export,extends,finally,for,function,if,import,in,
+            instanceof,let,new,return,super,switch,this,throw,try,
+            typeof,var,void,while,with,yield,async,await,of,static,
+            get,set,true,false,null,undefined},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]',
+  morestring=[b]`,
+}
+{% endif %}
+{% endif %}
+
 % ========== Lists: level-dependent indentation ==========
 \usepackage{enumitem}
 

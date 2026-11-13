@@ -57,7 +57,9 @@ fn main() -> Result<()> {
     println!("LaTeX saved: {}", tex_path.display());
 
     if cfg.project.compile_pdf {
-        compile_pdf(&tex_path)?;
+        let shell_escape = cfg.code.enabled
+            && cfg.code.engine.eq_ignore_ascii_case("minted");
+        compile_pdf(&tex_path, shell_escape)?;
     }
 
     Ok(())
@@ -65,12 +67,17 @@ fn main() -> Result<()> {
 
 /// Runs `xelatex` (and `biber` if needed), then `xelatex` twice more to
 /// stabilise the table of contents and cross-references.
-fn compile_pdf(tex_path: &Path) -> Result<()> {
+fn compile_pdf(tex_path: &Path, shell_escape: bool) -> Result<()> {
     let dir = tex_path.parent().unwrap();
     println!("running xelatex...");
 
-    let args: &[&str] = &["-interaction=nonstopmode", "-halt-on-error", "main.tex"];
-    run_latex(dir, args)?;
+    let mut args: Vec<&str> = vec!["-interaction=nonstopmode", "-halt-on-error"];
+    if shell_escape {
+        args.push("-shell-escape");
+    }
+    args.push("main.tex");
+
+    run_latex(dir, &args)?;
 
     if tex_path.with_extension("bcf").exists() {
         println!("running biber...");
@@ -81,10 +88,10 @@ fn compile_pdf(tex_path: &Path) -> Result<()> {
             .context("biber not found or failed")?;
     }
 
-    run_latex(dir, args)?;
+    run_latex(dir, &args)?;
     // Third pass stabilises page numbers in the ToC and \ref{} when the
     // ToC is long.
-    run_latex(dir, args)?;
+    run_latex(dir, &args)?;
 
     println!("PDF ready: {}", dir.join("main.pdf").display());
     Ok(())
