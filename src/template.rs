@@ -4,7 +4,7 @@ use std::fs;
 use tera::{Context as TeraContext, Tera};
 
 pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
-    let base_path  = cfg.templates.base_path();
+    let base_path = cfg.templates.base_path();
     let title_path = cfg.templates.title_path_for(&cfg.project.doc_type);
 
     let base_content = fs::read_to_string(&base_path)
@@ -13,7 +13,7 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
         .with_context(|| format!("Не удалось прочитать шаблон: {}", title_path.display()))?;
 
     let mut tera = Tera::default();
-    tera.add_raw_template("base.tex.tera",  &base_content)?;
+    tera.add_raw_template("base.tex.tera", &base_content)?;
     tera.add_raw_template("title.tex.tera", &title_content)?;
 
     let mut ctx = TeraContext::new();
@@ -41,7 +41,10 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("figure_caption_below", &cfg.style.figure_caption_below);
     ctx.insert("table_caption_above", &cfg.style.table_caption_above);
     ctx.insert("caption_font_size", &cfg.style.caption_font_size);
-    ctx.insert("caption_baseline", &compute_baseline(&cfg.style.caption_font_size));
+    ctx.insert(
+        "caption_baseline",
+        &compute_baseline(&cfg.style.caption_font_size),
+    );
     ctx.insert("table_font_size", &cfg.style.table_font_size);
     ctx.insert("section_align", &cfg.style.section_align);
     ctx.insert("section_before_skip", &cfg.style.section_before_skip);
@@ -62,12 +65,16 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("use_biblatex", &cfg.bibliography.use_biblatex);
     ctx.insert(
         "bib_file",
-        &cfg.project.bib_file.clone().unwrap_or_else(|| "refs.bib".into()),
+        &cfg.project
+            .bib_file
+            .clone()
+            .unwrap_or_else(|| "refs.bib".into()),
     );
 
     // Lists
     ctx.insert("itemize_label", &cfg.lists.itemize_label);
     ctx.insert("enumerate_label", &cfg.lists.enumerate_label);
+    ctx.insert("bibliography_label", &cfg.lists.bibliography_label);
 
     // TOC
     ctx.insert("toc_clickable_dots", &cfg.toc.clickable_dots);
@@ -139,7 +146,11 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     } else {
         // пустая строка — для рукописного заполнения на распечатке
         vec![Student {
-            name: if fill { "________".into() } else { String::new() },
+            name: if fill {
+                "________".into()
+            } else {
+                String::new()
+            },
             group: String::new(),
             student_id: String::new(),
         }]
@@ -147,7 +158,10 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     ctx.insert("students", &students_ctx);
 
     ctx.insert("supervisor", &fill_or_blank(&t.supervisor, fill));
-    ctx.insert("supervisor_title", &fill_or_blank(&t.supervisor_title, fill));
+    ctx.insert(
+        "supervisor_title",
+        &fill_or_blank(&t.supervisor_title, fill),
+    );
     ctx.insert("reviewer", &fill_or_blank(&t.reviewer, fill));
     ctx.insert("year", &t.year);
     ctx.insert("city", &t.city);
@@ -163,7 +177,10 @@ fn fill_or_blank(value: &str, fill: bool) -> String {
 
 fn compute_baseline(size: &str) -> String {
     let s = size.trim();
-    if let Some(num) = s.strip_suffix("pt").and_then(|n| n.trim().parse::<f32>().ok()) {
+    if let Some(num) = s
+        .strip_suffix("pt")
+        .and_then(|n| n.trim().parse::<f32>().ok())
+    {
         format!("{}pt", (num * 1.2 * 10.0).round() / 10.0)
     } else {
         "16.8pt".to_string()

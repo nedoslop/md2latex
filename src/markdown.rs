@@ -88,7 +88,11 @@ fn render_node<'a>(
                         upper == cfg.style.main_part_heading.trim().to_uppercase();
 
                     let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
-                    *ctx = if unnumbered { Ctx::StructuralUnnumbered } else { Ctx::StructuralNumbered };
+                    *ctx = if unnumbered {
+                        Ctx::StructuralUnnumbered
+                    } else {
+                        Ctx::StructuralNumbered
+                    };
                     if is_appendix_heading(&clean, cfg) {
                         *ctx = Ctx::Appendix;
                         render_appendix_heading(&clean, out, cfg)?;
@@ -260,15 +264,15 @@ fn render_list<'a>(
         _ => return Ok(()),
     };
     let is_ordered = list_data.list_type == comrak::nodes::ListType::Ordered;
-    let env = if is_ordered { "enumerate" } else { "itemize" };
-
-    let label_opt = if is_ordered && in_bibliography {
-        format!("[label={}]", cfg.lists.bibliography_label)
+    let env = if is_ordered && in_bibliography {
+        "biblist"
+    } else if is_ordered {
+        "enumerate"
     } else {
-        String::new()
+        "itemize"
     };
 
-    out.push_str(&format!("\\begin{{{}}}{}\n", env, label_opt));
+    out.push_str(&format!("\\begin{{{}}}\n", env));
 
     for item_node in node.children() {
         if !matches!(&item_node.data.borrow().value, NodeValue::Item(_)) {
@@ -383,7 +387,9 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
          \\renewcommand{{\\theequation}}{{{}.\\arabic{{equation}}}}\n\
          {{\\centering\\textbf{{{}}}\\par}}\n",
         escape_latex(&toc_entry),
-        letter, letter, letter,
+        letter,
+        letter,
+        letter,
         escape_latex(&app_label)
     ));
 

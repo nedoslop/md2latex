@@ -81,28 +81,44 @@
   indention=0pt
 }
 
-% ========== Списки: уровневые отступы ==========
+% ========== Списки: уровневые отступы (СТУ 7.5-07) ==========
 \usepackage{enumitem}
 
+% Маркированные списки (дефис)
 \setlist[itemize]{
-  label=\textendash,
+  label={{ itemize_label }},
+  wide={{ paragraph_indent | trim }},
+  leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
-\setlist[itemize,1]{leftmargin={{ paragraph_indent | trim }}}
-\setlist[itemize,2]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+0.5cm\relax}
-\setlist[itemize,3]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+1cm\relax}
-\setlist[itemize,4]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+1.5cm\relax}
+\setlist[itemize,1]{wide={{ paragraph_indent | trim }}, leftmargin=0pt}
+\setlist[itemize,2]{wide=\dimexpr{{ paragraph_indent | trim }}*2\relax, leftmargin=0pt}
+\setlist[itemize,3]{wide=\dimexpr{{ paragraph_indent | trim }}*3\relax, leftmargin=0pt}
+\setlist[itemize,4]{wide=\dimexpr{{ paragraph_indent | trim }}*4\relax, leftmargin=0pt}
 
+% Нумерованные списки (1), 2), 3))
 \setlist[enumerate]{
   label={{ enumerate_label }},
+  wide={{ paragraph_indent | trim }},
+  leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
-\setlist[enumerate,1]{leftmargin={{ paragraph_indent | trim }}}
-\setlist[enumerate,2]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+0.5cm\relax}
-\setlist[enumerate,3]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+1cm\relax}
-\setlist[enumerate,4]{leftmargin=\dimexpr{{ paragraph_indent | trim }}+1.5cm\relax}
+\setlist[enumerate,1]{wide={{ paragraph_indent | trim }}, leftmargin=0pt}
+\setlist[enumerate,2]{wide=\dimexpr{{ paragraph_indent | trim }}*2\relax, leftmargin=0pt}
+\setlist[enumerate,3]{wide=\dimexpr{{ paragraph_indent | trim }}*3\relax, leftmargin=0pt}
+\setlist[enumerate,4]{wide=\dimexpr{{ paragraph_indent | trim }}*4\relax, leftmargin=0pt}
+
+% Список использованных источников (1., 2., 3.)
+\newlist{biblist}{enumerate}{1}
+\setlist[biblist]{
+  label={{ bibliography_label }},
+  wide={{ paragraph_indent | trim }},
+  leftmargin=0pt,
+  labelsep=0.5em,
+  topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
+}
 
 % ========== Перенумерация ==========
 {% if numbering == "within_section" %}
