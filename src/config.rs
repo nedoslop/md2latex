@@ -15,6 +15,7 @@ pub struct Config {
     #[serde(default)] pub templates: Templates,
     #[serde(default)] pub toc: Toc,
     #[serde(default)] pub line_breaking: LineBreaking,
+    #[serde(default)] pub labels: Labels, // <-- ДОБАВЛЕНО
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +70,35 @@ pub struct Style {
     #[serde(default = "default_appendix_prefix")]      pub appendix_prefix: String,
     #[serde(default = "default_main_part_heading")]    pub main_part_heading: String,
     #[serde(default = "default_bibliography_heading")] pub bibliography_heading: String,
+}
+
+// ── Локализация (подписи и названия) ─────────────────────────────────────
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Labels {
+    #[serde(default = "default_table_continued")] pub table_continued: String,
+    #[serde(default = "default_table_ended")]     pub table_ended: String,
+    #[serde(default = "default_figure_name")]     pub figure_name: String,
+    #[serde(default = "default_table_name")]      pub table_name: String,
+    #[serde(default = "default_contents_name")]   pub contents_name: String,
+    #[serde(default = "default_bibliography_name")] pub bibliography_name: String,
+}
+fn default_table_continued() -> String { "Продолжение таблицы".into() }
+fn default_table_ended() -> String { "Окончание таблицы".into() }
+fn default_figure_name() -> String { "Рисунок".into() }
+fn default_table_name() -> String { "Таблица".into() }
+fn default_contents_name() -> String { "СОДЕРЖАНИЕ".into() }
+fn default_bibliography_name() -> String { "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ".into() }
+impl Default for Labels {
+    fn default() -> Self {
+        Self {
+            table_continued: default_table_continued(),
+            table_ended: default_table_ended(),
+            figure_name: default_figure_name(),
+            table_name: default_table_name(),
+            contents_name: default_contents_name(),
+            bibliography_name: default_bibliography_name(),
+        }
+    }
 }
 
 fn default_font_fallback() -> String { "TeX Gyre Termes".into() }
@@ -271,13 +301,13 @@ pub struct LineBreaking {
     #[serde(default = "default_true")]             pub sloppy: bool,
     #[serde(default = "default_emergencystretch")] pub emergencystretch: String,
     #[serde(default = "default_tolerance")]        pub tolerance: i32,
-    #[serde(default = "default_hbadness")]         pub hbadness: i32, // <-- ДОБАВЛЕНО
+    #[serde(default = "default_hbadness")]         pub hbadness: i32,
 }
 fn default_hyphen_penalty() -> i32 { 50 }
 fn default_exhyphen_penalty() -> i32 { 50 }
 fn default_emergencystretch() -> String { "2em".into() }
 fn default_tolerance() -> i32 { 9999 }
-fn default_hbadness() -> i32 { 10000 } // <-- ДОБАВЛЕНО
+fn default_hbadness() -> i32 { 10000 }
 
 impl Default for LineBreaking {
     fn default() -> Self {
@@ -287,7 +317,7 @@ impl Default for LineBreaking {
             sloppy: true,
             emergencystretch: "2em".into(),
             tolerance: 9999,
-            hbadness: 10000, // <-- ДОБАВЛЕНО
+            hbadness: 10000,
         }
     }
 }

@@ -39,7 +39,7 @@
 \hyphenpenalty={{ lb_hyphen_penalty }}
 \exhyphenpenalty={{ lb_exhyphen_penalty }}
 \tolerance={{ lb_tolerance }}
-\hbadness={{ lb_hbadness }} % <-- ДОБАВЛЕНО: подавляет предупреждения Underfull \hbox
+\hbadness={{ lb_hbadness }}
 
 % ========== Интервалы и абзацы ==========
 \usepackage{setspace}
@@ -256,10 +256,10 @@
 
 % ========== Названия ==========
 \addto\captionsrussian{
-  \renewcommand{\contentsname}{СОДЕРЖАНИЕ}
-  \renewcommand{\refname}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
-  \renewcommand{\figurename}{Рисунок}
-  \renewcommand{\tablename}{Таблица}
+  \renewcommand{\contentsname}{ {{- labels.contents_name | trim -}} }
+  \renewcommand{\refname}{ {{- labels.bibliography_name | trim -}} }
+  \renewcommand{\figurename}{ {{- labels.figure_name | trim -}} }
+  \renewcommand{\tablename}{ {{- labels.table_name | trim -}} }
 }
 
 \begin{document}
@@ -281,8 +281,8 @@
 {% if use_biblatex %}
 \clearpage
 \phantomsection
-\addcontentsline{toc}{section}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
-{\centering\setlength{\parindent}{0pt}\textbf{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}\par}
+\addcontentsline{toc}{section}{ {{- labels.bibliography_name | trim -}} }
+{\centering\setlength{\parindent}{0pt}\textbf{ {{- labels.bibliography_name | trim -}} }\par}
 \vspace{\baselineskip}
 \printbibliography[heading=none]
 {% endif %}

@@ -674,10 +674,9 @@ fn render_table<'a>(
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
 
         // Последующие страницы
-        // ОБНОВЛЕНО: Явно задаем размер шрифта заголовка (caption_font_size, по умолчанию 14pt)
         out.push_str(&format!(
-            "  \\multicolumn{{{}}}{{@{{}}l@{{}}}}{{\\fontsize{{{}}}{{{}}}\\selectfont Продолжение таблицы \\thetable}} \\\\\n",
-            ncols, cfg.style.caption_font_size, cap_baseline
+            "  \\multicolumn{{{}}}{{@{{}}l@{{}}}}{{\\fontsize{{{}}}{{{}}}\\selectfont {} \\thetable}} \\\\\n",
+            ncols, cfg.style.caption_font_size, cap_baseline, cfg.labels.table_continued
         ));
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));

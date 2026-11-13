@@ -37,6 +37,14 @@ appendix_prefix = "ПРИЛОЖЕНИЕ"
 main_part_heading = "ОСНОВНАЯ ЧАСТЬ"
 bibliography_heading = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
 
+[labels]
+table_continued = "Продолжение таблицы"
+table_ended = "Окончание таблицы"
+figure_name = "Рисунок"
+table_name = "Таблица"
+contents_name = "СОДЕРЖАНИЕ"
+bibliography_name = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
+
 [lists]
 itemize_label = "-"
 enumerate_label = "\\arabic*)"

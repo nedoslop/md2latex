@@ -85,7 +85,10 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("lb_exhyphen_penalty", &cfg.line_breaking.exhyphen_penalty);
     ctx.insert("lb_emergencystretch", &cfg.line_breaking.emergencystretch);
     ctx.insert("lb_tolerance", &cfg.line_breaking.tolerance);
-    ctx.insert("lb_hbadness", &cfg.line_breaking.hbadness); // <-- ДОБАВЛЕНО
+    ctx.insert("lb_hbadness", &cfg.line_breaking.hbadness);
+
+    // Labels
+    ctx.insert("labels", &cfg.labels); // <-- ДОБАВЛЕНО
 
     // Title meta
     ctx.insert("topic", &cfg.title.topic);
