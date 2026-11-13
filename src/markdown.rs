@@ -359,8 +359,6 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
         to_title_case_if_upper(text)
     };
 
-    // добавлено: «ОСНОВНАЯ ЧАСТЬ» — управляющий маркер, в PDF и в ToC не выводится
-    // (Приложение Т СТУ 7.5-07: в содержании нет отдельной строки «ОСНОВНАЯ ЧАСТЬ»).
     if display.trim().to_uppercase() == cfg.style.main_part_heading.trim().to_uppercase() {
         return Ok(());
     }
@@ -368,7 +366,7 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
     out.push_str(&format!(
         "\\phantomsection\n\
          \\addcontentsline{{toc}}{{section}}{{{}}}\n\
-         {{\\centering\\textbf{{{}}}\\par}}\n\
+         {{\\noindent\\centering\\textbf{{{}}}\\par}}\n\
          \\vspace{{\\baselineskip}}\n\n",
         escape_latex(&display),
         escape_latex(&display)
@@ -409,7 +407,7 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
          \\renewcommand{{\\thefigure}}{{{}.\\arabic{{figure}}}}\n\
          \\renewcommand{{\\thetable}}{{{}.\\arabic{{table}}}}\n\
          \\renewcommand{{\\theequation}}{{{}.\\arabic{{equation}}}}\n\
-         {{\\centering\\textbf{{{}}}\\par}}\n",
+         {{\\noindent\\centering\\textbf{{{}}}\\par}}\n",
         escape_latex(&toc_entry),
         letter,
         letter,
@@ -420,7 +418,7 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
     if !title.is_empty() {
         out.push_str(&format!(
             "\\vspace{{0.5\\baselineskip}}\n\
-             {{\\centering\\textbf{{{}}}\\par}}\n",
+             {{\\noindent\\centering\\textbf{{{}}}\\par}}\n",
             escape_latex(&to_title_case_if_upper(title))
         ));
     }

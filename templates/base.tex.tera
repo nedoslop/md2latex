@@ -124,11 +124,11 @@
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyfoot[C]{\thepage}
+\fancyfoot[C]{\noindent\thepage}
 \renewcommand{\headrulewidth}{0pt}
 \fancypagestyle{plain}{
   \fancyhf{}
-  \fancyfoot[C]{\thepage}
+  \fancyfoot[C]{\noindent\thepage}
   \renewcommand{\headrulewidth}{0pt}
 }
 
@@ -157,23 +157,42 @@
   {}
 \titlespacing*{\subsubsection}{0pt}{\baselineskip}{\baselineskip}
 
-% ========== Содержание ==========
+% ========== Содержание (п. 6.4.4 СТУ 7.5-07) ==========
 \usepackage{tocloft}
-\renewcommand{\cfttoctitlefont}{\hfill\normalfont\bfseries}
-\renewcommand{\cftaftertoctitle}{\hfill}
+\renewcommand{\cfttoctitlefont}{\hspace*{\fill}\normalfont\bfseries}
+\renewcommand{\cftaftertoctitle}{\hspace*{\fill}}
 \setlength{\cftbeforetoctitleskip}{0pt}
 \setlength{\cftaftertoctitleskip}{\baselineskip}
+
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftsubsubsecleader}{\cftdotfill{\cftdotsep}}
+
 \renewcommand{\cftsecfont}{\normalfont}
 \renewcommand{\cftsecpagefont}{\normalfont}
+\renewcommand{\cftsubsecfont}{\normalfont}
+\renewcommand{\cftsubsecpagefont}{\normalfont}
+\renewcommand{\cftsubsubsecfont}{\normalfont}
+\renewcommand{\cftsubsubsecpagefont}{\normalfont}
+
 \setlength{\cftbeforesecskip}{2pt}
 \setlength{\cftbeforesubsecskip}{2pt}
+\setlength{\cftbeforesubsubsecskip}{2pt}
 \renewcommand{\cftdotsep}{1.5}
-% Отступы в оглавлении по п. 6.4.4 СТУ 7.5-07 (шаг ~2 знака)
+
+% Защита от наезда длинных заголовков на номера страниц
+\cftsetpnumwidth{1.8em}
+\cftsetrmarg{2.5em}
+
+% Ступенчатые отступы уровней (шаг ~2 знака по СТУ 7.5-07)
 \setlength{\cftsecindent}{0em}
-\setlength{\cftsubsecindent}{1em}
-\setlength{\cftsubsubsecindent}{2em}
+\setlength{\cftsecnumwidth}{1.5em}
+
+\setlength{\cftsubsecindent}{1.25em}
+\setlength{\cftsubsecnumwidth}{2.2em}
+
+\setlength{\cftsubsubsecindent}{2.5em}
+\setlength{\cftsubsubsecnumwidth}{3.0em}
 
 % ========== Ссылки ==========
 {% if links_colored %}
@@ -252,7 +271,7 @@
 \clearpage
 \phantomsection
 \addcontentsline{toc}{section}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
-{\centering\textbf{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}\par}
+{\noindent\centering\textbf{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}\par}
 \vspace{\baselineskip}
 \printbibliography[heading=none]
 {% endif %}
