@@ -172,7 +172,9 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
 
 fn fill_or_blank(value: &str, fill: bool) -> String {
     if value.trim().is_empty() && fill {
-        "________".to_string()
+        // Используем \rule вместо подчеркиваний, чтобы линия была ровной,
+        // нужной толщины и идеально совпадала с линией для подписи.
+        "\\rule{3.5cm}{0.4pt}".to_string()
     } else {
         value.to_string()
     }
