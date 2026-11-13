@@ -641,7 +641,6 @@ fn render_table<'a>(
     }
     let ncols = rows[0].len().max(1);
     let baseline = compute_baseline(&cfg.style.table_font_size);
-    let cap_baseline = compute_baseline(&cfg.style.caption_font_size);
 
     let (caption_latex, label_latex, breakable, new_page) = match meta {
         Some(m) => (
@@ -659,6 +658,11 @@ fn render_table<'a>(
             out.push_str("\\clearpage\n");
         }
         out.push_str("  \\stepcounter{ltid}\n");
+        out.push_str(&format!(
+            "  \\ltSetLabels{{{}}}{{{}}}\n",
+            escape_latex(&cfg.labels.table_continued),
+            escape_latex(&cfg.labels.table_ended)
+        ));
         out.push_str(&format!(
             "  {{\\fontsize{{{}}}{{{}}}\\selectfont\n",
             cfg.style.table_font_size, baseline
@@ -686,28 +690,20 @@ fn render_table<'a>(
             .map(|r| r.iter().map(|c| format!("\\textbf{{{}}}", c)).collect())
             .unwrap_or_default();
 
-        // Шапка первой страницы
+        // 1. Шапка первой страницы
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
 
-        // Шапка последующих страниц ("Продолжение таблицы" или "Окончание таблицы")
-        out.push_str(&format!(
-            "  \\multicolumn{{{}}}{{@{{}}l@{{}}}}{{\\fontsize{{{}}}{{{}}}\\selectfont \\ltHeaderText{{{}}}{{{}}}{{\\thetable}}}} \\\\\n",
-            ncols,
-            cfg.style.caption_font_size,
-            cap_baseline,
-            escape_latex(&cfg.labels.table_continued),
-            escape_latex(&cfg.labels.table_ended)
-        ));
+        // 2. Шапка последующих страниц (только заголовки столбцов; текст "Продолжение/Окончание" добавляет \LT@print@head)
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
 
-        // Подвал промежуточных страниц: пустой, чтобы не дублировать \hline строки
+        // 3. Подвал промежуточных страниц (пустой, чтобы не дублировать линию)
         out.push_str("  \\endfoot\n");
 
-        // Подвал последней страницы
+        // 4. Подвал последней страницы
         out.push_str("  \\endlastfoot\n");
 
         // Строки данных
@@ -727,6 +723,7 @@ fn render_table<'a>(
             }
             out.push_str(" \\\\\n  \\hline\n");
         }
+
         out.push_str("  \\end{xltabular}\n  }\n\n");
     } else {
         // ============ РЕЖИМ БЕЗ ПЕРЕНОСА (tabularx) ============

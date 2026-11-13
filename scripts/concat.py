@@ -1,7 +1,6 @@
 import os
 import sys
 
-
 cwd = os.path.dirname(os.path.dirname(__file__))
 
 files = [
@@ -13,7 +12,7 @@ files = [
     'templates/base.tex.tera',
     'templates/title_course.tex.tera',
     'md2latex.toml',
-    'examples/input.md'
+    'examples/input.md',
 ]
 
 out = open('joined.txt', 'w', encoding='utf-8')

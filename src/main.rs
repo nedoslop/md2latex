@@ -19,8 +19,8 @@ struct Cli {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let cfg = config::Config::from_file(&cli.config)
-        .context("Не удалось загрузить конфигурацию")?;
+    let cfg =
+        config::Config::from_file(&cli.config).context("Не удалось загрузить конфигурацию")?;
 
     let md_path = PathBuf::from(&cfg.project.input);
     let md_content = fs::read_to_string(&md_path)
@@ -41,8 +41,8 @@ fn main() -> Result<()> {
     let body = markdown::markdown_to_latex(&md_prepared, &cfg)
         .context("Ошибка при преобразовании Markdown")?;
 
-    let full_latex = template::render_document(&cfg, &body)
-        .context("Ошибка при рендеринге LaTeX-шаблона")?;
+    let full_latex =
+        template::render_document(&cfg, &body).context("Ошибка при рендеринге LaTeX-шаблона")?;
 
     let tex_path = out_dir.join("main.tex");
     fs::write(&tex_path, &full_latex)
