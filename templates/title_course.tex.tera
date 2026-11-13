@@ -61,14 +61,12 @@
 {% if s.group | trim != "" or s.student_id | trim != "" %}
 \begin{tabular}[t]{@{}l@{}}
   {\fontsize{14pt}{16.8pt}\selectfont {% if s.group | trim != "" %}{{ s.group }}{% endif %}{% if s.group | trim != "" and s.student_id | trim != "" %}, {% endif %}{% if s.student_id | trim != "" %}{{ s.student_id }}{% endif %}}\\
-  {\fontsize{10pt}{12pt}\selectfont номер группы,}\\
-  {\fontsize{10pt}{12pt}\selectfont зачетной книжки}
+  {\fontsize{10pt}{12pt}\selectfont номер группы, зачетной книжки}
 \end{tabular}
 {% else %}
 \begin{tabular}[t]{@{}l@{}}
-  \rule{4.8cm}{0.4pt}\\
-  {\fontsize{10pt}{12pt}\selectfont номер группы,}\\
-  {\fontsize{10pt}{12pt}\selectfont зачетной книжки}
+  \rule{5.0cm}{0.4pt}\\
+  {\fontsize{10pt}{12pt}\selectfont номер группы, зачетной книжки}
 \end{tabular}
 {% endif %} &
 \begin{tabular}[t]{@{}c@{}}
