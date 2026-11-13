@@ -84,35 +84,27 @@
 % ========== Списки: уровневые отступы (СТУ 7.5-07) ==========
 \usepackage{enumitem}
 
-% Маркированные списки (дефис)
+\makeatletter
 \setlist[itemize]{
   label={{ itemize_label }},
-  wide={{ paragraph_indent | trim }},
+  wide=\dimexpr{{ paragraph_indent | trim }}*\@listdepth\relax,
   leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
-\setlist[itemize,1]{wide={{ paragraph_indent | trim }}, leftmargin=0pt}
-\setlist[itemize,2]{wide=\dimexpr{{ paragraph_indent | trim }}*2\relax, leftmargin=0pt}
-\setlist[itemize,3]{wide=\dimexpr{{ paragraph_indent | trim }}*3\relax, leftmargin=0pt}
-\setlist[itemize,4]{wide=\dimexpr{{ paragraph_indent | trim }}*4\relax, leftmargin=0pt}
 
-% Нумерованные списки (1), 2), 3))
 \setlist[enumerate]{
   label={{ enumerate_label }},
-  wide={{ paragraph_indent | trim }},
+  wide=\dimexpr{{ paragraph_indent | trim }}*\@listdepth\relax,
   leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
-\setlist[enumerate,1]{wide={{ paragraph_indent | trim }}, leftmargin=0pt}
-\setlist[enumerate,2]{wide=\dimexpr{{ paragraph_indent | trim }}*2\relax, leftmargin=0pt}
-\setlist[enumerate,3]{wide=\dimexpr{{ paragraph_indent | trim }}*3\relax, leftmargin=0pt}
-\setlist[enumerate,4]{wide=\dimexpr{{ paragraph_indent | trim }}*4\relax, leftmargin=0pt}
+\makeatother
 
 % Список использованных источников (1., 2., 3.)
-\newlist{biblist}{enumerate}{1}
-\setlist[biblist]{
+\newlist{stubiblist}{enumerate}{1}
+\setlist[stubiblist]{
   label={{ bibliography_label }},
   wide={{ paragraph_indent | trim }},
   leftmargin=0pt,

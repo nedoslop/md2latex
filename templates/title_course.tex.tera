@@ -44,7 +44,7 @@
 
 % ── Руководитель и студенты в единой сетке ──────────────────────────────
 \noindent
-\begin{tabular}{@{} p{2.8cm} p{5.2cm} p{4.0cm} l @{}}
+\begin{tabular}{@{} p{2.8cm} p{4.6cm} p{4.0cm} l @{}}
 {\fontsize{14pt}{16.8pt}\selectfont Руководитель} &
 &
 \begin{tabular}[t]{@{}c@{}}

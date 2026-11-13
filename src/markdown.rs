@@ -265,7 +265,7 @@ fn render_list<'a>(
     };
     let is_ordered = list_data.list_type == comrak::nodes::ListType::Ordered;
     let env = if is_ordered && in_bibliography {
-        "biblist"
+        "stubiblist"
     } else if is_ordered {
         "enumerate"
     } else {
