@@ -626,8 +626,8 @@ fn render_table<'a>(
     }
     let ncols = rows[0].len().max(1);
     let baseline = compute_baseline(&cfg.style.table_font_size);
+    let cap_baseline = compute_baseline(&cfg.style.caption_font_size);
 
-    // Извлекаем настройки из метаданных, дефолты: breakable=true, new_page=false
     let (caption_latex, label_latex, breakable, new_page) = match meta {
         Some(m) => (
             escape_latex(m.caption.trim_end_matches('.')),
@@ -673,10 +673,11 @@ fn render_table<'a>(
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
 
-        // Последующие страницы (без вертикальных линий вокруг текста "Продолжение")
+        // Последующие страницы
+        // ОБНОВЛЕНО: Явно задаем размер шрифта заголовка (caption_font_size, по умолчанию 14pt)
         out.push_str(&format!(
-            "  \\multicolumn{{{}}}{{@{{}}l@{{}}}}{{Продолжение таблицы \\thetable}} \\\\\n",
-            ncols
+            "  \\multicolumn{{{}}}{{@{{}}l@{{}}}}{{\\fontsize{{{}}}{{{}}}\\selectfont Продолжение таблицы \\thetable}} \\\\\n",
+            ncols, cfg.style.caption_font_size, cap_baseline
         ));
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
