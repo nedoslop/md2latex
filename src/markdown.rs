@@ -683,7 +683,9 @@ fn render_table<'a>(
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
 
         out.push_str("  \\hline\n  \\endfoot\n");
-        out.push_str("  \\hline\n  \\endlastfoot\n");
+        
+        // УБИРАЕМ \hline из \endlastfoot, чтобы избежать дублирования линии
+        out.push_str("  \\endlastfoot\n");
 
         // Данные
         let data_count = rows.len() - 1;
@@ -695,6 +697,12 @@ fn render_table<'a>(
                 out.push_str("  \\hline\n");
             }
         }
+        
+        // Добавляем нижнюю линию после последней строки данных
+        if data_count > 0 {
+            out.push_str("  \\hline\n");
+        }
+        
         out.push_str("  \\end{xltabular}\n  }\n\n");
     } else {
         // ============ РЕЖИМ БЕЗ ПЕРЕНОСА (tabularx) ============
