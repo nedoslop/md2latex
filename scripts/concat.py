@@ -11,7 +11,9 @@ files = [
     'src/markdown.rs',
     'src/template.rs',
     'templates/base.tex.tera',
-    'template/title_bachelor.tex.tera'
+    'templates/title_course.tex.tera',
+    'md2latex.toml',
+    'examples/input.md'
 ]
 
 out = open('joined.txt', 'w', encoding='utf-8')
