@@ -141,7 +141,7 @@
 % и xelatex падает с "Too many }'s".
 \titleformat{\section}[block]
   {\normalfont{% if section_bold %}\bfseries{% endif %}{% if section_align == "center" %}\centering{% else %}\raggedright{% endif %}\hyphenpenalty=10000\exhyphenpenalty=10000}
-  { {% if section_align != "center" %}\hspace{\parindent}{% endif %}\thesection }
+  { {{- "" -}}{% if section_align != "center" %}\hspace{\parindent}{% endif %}\thesection{{- "" -}} }
   {0.5em}
   {% if section_uppercase %}{\MakeUppercase}{% else %}{}{% endif %}
 \titlespacing*{\section}{0pt}{ {{- section_before_skip | trim -}} }{ {{- section_after_skip | trim -}} }
