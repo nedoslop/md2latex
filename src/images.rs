@@ -1,18 +1,38 @@
 //! Image preprocessing: copy (and optionally convert) every image referenced
 //! from Markdown into `<out_dir>/images/`, rewriting the Markdown links
 //! accordingly.
+//!
+//! A simple on-disk cache (`.cache` in the images directory) records each
+//! image's size / mtime and the active conversion settings (format, DPI).
+//! On subsequent runs, files whose entry still matches are skipped — so
+//! editing the document body no longer re-copies unchanged images, and only
+//! new or genuinely modified sources (or a changed `[images]` config) trigger
+//! work.
 
 use anyhow::{Context, Result};
 use image::ImageFormat;
 use regex::Regex;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+const CACHE_FILE: &str = ".cache";
+
+#[derive(Default, Debug)]
+struct ImageStats {
+    processed: usize,
+    cached: usize,
+    missing: usize,
+    urls: usize,
+}
 
 /// Walks through `md`, copies referenced images into `out_dir/images/`,
 /// optionally converts them to `convert_to`, and returns the rewritten
 /// Markdown where every image link points to the new location.
 ///
 /// Remote URLs are left untouched; missing local files produce a warning.
+/// Repeated calls reuse `<out_dir>/images/.cache` to skip unchanged files.
 pub fn prepare_images(
     md: &str,
     md_path: &Path,
@@ -24,12 +44,16 @@ pub fn prepare_images(
     fs::create_dir_all(&images_out)
         .with_context(|| format!("failed to create {}", images_out.display()))?;
 
+    let mut cache = ImageCache::load(&images_out);
+    let settings = settings_fingerprint(convert_to, dpi);
     let md_dir = md_path.parent().unwrap_or_else(|| Path::new("."));
 
     let re = Regex::new(r#"!\[([^\]]*)\]\(([^)\s]+)(\s+[^)]*)?\)"#)
         .context("failed to compile image regex")?;
 
-    let mut used_names: std::collections::HashSet<String> = Default::default();
+    let mut used_names: HashSet<String> = Default::default();
+    let mut src_to_dest: HashMap<PathBuf, String> = Default::default();
+    let mut stats = ImageStats::default();
 
     let result = re.replace_all(md, |caps: &regex::Captures| {
         let alt = &caps[1];
@@ -38,6 +62,7 @@ pub fn prepare_images(
 
         if src.starts_with("http://") || src.starts_with("https://") {
             eprintln!("warning: skipping URL image: {}", src);
+            stats.urls += 1;
             return caps[0].to_string();
         }
 
@@ -49,7 +74,13 @@ pub fn prepare_images(
 
         if !full_src.exists() {
             eprintln!("warning: file not found: {}", full_src.display());
+            stats.missing += 1;
             return caps[0].to_string();
+        }
+
+        // Same source already handled in this document — reuse its name.
+        if let Some(existing) = src_to_dest.get(&full_src) {
+            return format!("![{}](images/{}{})", alt, existing, rest);
         }
 
         let base_name = full_src
@@ -57,47 +88,150 @@ pub fn prepare_images(
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "image".into());
 
-        let mut sanitized = sanitize(&base_name);
-        let mut n = 1;
-        while used_names.contains(&sanitized) && images_out.join(&sanitized) != full_src {
-            let stem = Path::new(&base_name)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "image".into());
-            let ext = Path::new(&base_name)
-                .extension()
-                .map(|s| format!(".{}", s.to_string_lossy()))
-                .unwrap_or_default();
-            sanitized = format!("{}_{}{}", sanitize(&stem), n, ext);
-            n += 1;
+        let stem = Path::new(&base_name)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "image".into());
+        let ext = Path::new(&base_name)
+            .extension()
+            .map(|s| format!(".{}", s.to_string_lossy()))
+            .unwrap_or_default();
+
+        // Resolve a unique destination name.
+        let mut counter = 1;
+        let mut candidate = format!("{}{}", sanitize(&stem), ext);
+        let mut final_name = final_dest_name(&candidate, convert_to);
+        while used_names.contains(&final_name) {
+            candidate = format!("{}_{}{}", sanitize(&stem), counter, ext);
+            final_name = final_dest_name(&candidate, convert_to);
+            counter += 1;
         }
-        used_names.insert(sanitized.clone());
 
-        let mut dest = images_out.join(&sanitized);
+        let dest = images_out.join(&final_name);
 
-        if let Some(fmt) = convert_to {
-            let target_ext = fmt.trim_start_matches('.').to_lowercase();
-            let target_name = dest.with_extension(&target_ext);
-            match convert_image(&full_src, &target_name, &target_ext, dpi) {
-                Ok(()) => {
-                    dest = target_name;
-                    sanitized = dest.file_name().unwrap().to_string_lossy().to_string();
-                }
-                Err(e) => eprintln!("warning: failed to convert {}: {}", full_src.display(), e),
+        // Cache lookup: destination must exist *and* match the current
+        // (source, settings) fingerprint.
+        let src_fp = match src_fingerprint(&full_src) {
+            Ok(fp) => fp,
+            Err(e) => {
+                eprintln!("warning: cannot fingerprint {}: {}", full_src.display(), e);
+                return caps[0].to_string();
             }
+        };
+        let cache_key = format!("{}:{}", src_fp, settings);
+        let up_to_date = dest.exists()
+            && cache
+                .get(&final_name)
+                .map(|s| s == cache_key)
+                .unwrap_or(false);
+
+        if up_to_date {
+            used_names.insert(final_name.clone());
+            src_to_dest.insert(full_src.clone(), final_name.clone());
+            stats.cached += 1;
+            return format!("![{}](images/{}{})", alt, final_name, rest);
         }
 
-        // Always copy (overwrites), so updated sources reach `out/images/`
-        // on repeated builds.
-        if let Err(e) = fs::copy(&full_src, &dest) {
-            eprintln!("warning: failed to copy {}: {}", full_src.display(), e);
-            return caps[0].to_string();
-        }
+        // Regenerate.
+        let processed_name = match convert_to {
+            Some(_) => {
+                let target_ext = final_name
+                    .rsplit_once('.')
+                    .map(|(_, e)| e.to_string())
+                    .unwrap_or_default();
+                match convert_image(&full_src, &dest, &target_ext, dpi) {
+                    Ok(()) => final_name.clone(),
+                    Err(e) => {
+                        eprintln!(
+                            "warning: failed to convert {}: {}",
+                            full_src.display(),
+                            e
+                        );
+                        // Fallback: copy with original extension, uniquified.
+                        let mut fb = 1;
+                        let mut fallback_base = format!("{}{}", sanitize(&stem), ext);
+                        while used_names.contains(&fallback_base) {
+                            fallback_base =
+                                format!("{}_{}{}", sanitize(&stem), fb, ext);
+                            fb += 1;
+                        }
+                        let fallback = images_out.join(&fallback_base);
+                        if let Err(e2) = fs::copy(&full_src, &fallback) {
+                            eprintln!(
+                                "warning: failed to copy {}: {}",
+                                full_src.display(),
+                                e2
+                            );
+                            return caps[0].to_string();
+                        }
+                        fallback_base
+                    }
+                }
+            }
+            None => {
+                if let Err(e) = fs::copy(&full_src, &dest) {
+                    eprintln!("warning: failed to copy {}: {}", full_src.display(), e);
+                    return caps[0].to_string();
+                }
+                final_name.clone()
+            }
+        };
 
-        format!("![{}](images/{}{})", alt, sanitized, rest)
+        cache.set(processed_name.clone(), cache_key);
+        used_names.insert(processed_name.clone());
+        src_to_dest.insert(full_src.clone(), processed_name.clone());
+        stats.processed += 1;
+        format!("![{}](images/{}{})", alt, processed_name, rest)
     });
 
+    // Drop entries whose output file disappeared, then persist.
+    cache.prune_missing(&images_out);
+    if let Err(e) = cache.save() {
+        eprintln!("warning: failed to save image cache: {}", e);
+    }
+
+    eprintln!(
+        "images: {} processed, {} cached, {} missing, {} url(s)",
+        stats.processed, stats.cached, stats.missing, stats.urls
+    );
+
     Ok(result.to_string())
+}
+
+/// Computes the final on-disk name given a sanitized base name and the
+/// optional target conversion format (mirrors `Path::with_extension`, which
+/// is what the pre-cache code used).
+fn final_dest_name(sanitized: &str, convert_to: Option<&str>) -> String {
+    match convert_to {
+        Some(fmt) => {
+            let target_ext = fmt.trim_start_matches('.').to_lowercase();
+            Path::new(sanitized)
+                .with_extension(&target_ext)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| sanitized.to_string())
+        }
+        None => sanitized.to_string(),
+    }
+}
+
+/// Settings fingerprint: any change here invalidates every cache entry.
+fn settings_fingerprint(convert_to: Option<&str>, dpi: u32) -> String {
+    format!("{}:{}", convert_to.unwrap_or(""), dpi)
+}
+
+/// `size:mtime_ns` fingerprint for the source file. Cheap and reliable for
+/// "did this file change since last build" — no need to hash the bytes.
+fn src_fingerprint(path: &Path) -> std::io::Result<String> {
+    let meta = fs::metadata(path)?;
+    let size = meta.len();
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    Ok(format!("{}:{}", size, mtime))
 }
 
 fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
@@ -124,12 +258,6 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
 }
 
 /// Rasterises a raster image into a single-page PDF at the given DPI.
-///
-/// Uses the `printpdf 0.12` API: `RawImage::from_dynamic_image` converts
-/// an `image::DynamicImage` into `printpdf`'s internal representation,
-/// `doc.add_image` registers it as an XObject, and `Op::UseXobject`
-/// places it on the page at its natural size (one pixel = one dot at 300 dpi
-/// by default[reference:2]).
 fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
     use printpdf::{Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, XObjectTransform};
 
@@ -139,19 +267,12 @@ fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
     let width_mm = (w as f32) * 25.4 / dpi_f;
     let height_mm = (h as f32) * 25.4 / dpi_f;
 
-    // Convert `image::DynamicImage` into `printpdf::RawImage`.
-    // This requires the `images` feature (or a format-specific feature
-    // such as `png` / `jpeg`) to be enabled on `printpdf`.
     let raw_image = RawImage::from_dynamic_image(img)
         .map_err(|e| anyhow::anyhow!("failed to convert image to RawImage: {}", e))?;
 
     let mut doc = PdfDocument::new("image");
-
-    // Register the image as an XObject in the document and obtain its ID.
     let image_xobject_id = doc.add_image(&raw_image);
 
-    // Place the image at the origin. Scaling can be adjusted via
-    // `XObjectTransform`; the default keeps the natural size.
     let page_contents = vec![Op::UseXobject {
         id: image_xobject_id,
         transform: XObjectTransform::default(),
@@ -179,4 +300,54 @@ fn sanitize(name: &str) -> String {
             }
         })
         .collect()
+}
+
+/// Persistent on-disk cache: one `filename\tfingerprint\n` per line.
+/// Kept in TSV rather than TOML to avoid filename → key-escaping weirdness
+/// (filenames can contain `.`, `-`, etc. that TOML bare keys reject).
+struct ImageCache {
+    path: PathBuf,
+    entries: BTreeMap<String, String>,
+}
+
+impl ImageCache {
+    fn load(dir: &Path) -> Self {
+        let path = dir.join(CACHE_FILE);
+        let mut entries = BTreeMap::new();
+        if let Ok(text) = fs::read_to_string(&path) {
+            for line in text.lines() {
+                if let Some((k, v)) = line.split_once('\t') {
+                    if !k.is_empty() {
+                        entries.insert(k.to_string(), v.to_string());
+                    }
+                }
+            }
+        }
+        Self { path, entries }
+    }
+
+    fn get(&self, name: &str) -> Option<&str> {
+        self.entries.get(name).map(|s| s.as_str())
+    }
+
+    fn set(&mut self, name: String, value: String) {
+        self.entries.insert(name, value);
+    }
+
+    fn prune_missing(&mut self, dir: &Path) {
+        self.entries.retain(|name, _| dir.join(name).exists());
+    }
+
+    fn save(&self) -> Result<()> {
+        let mut text = String::new();
+        for (k, v) in &self.entries {
+            text.push_str(k);
+            text.push('\t');
+            text.push_str(v);
+            text.push('\n');
+        }
+        fs::write(&self.path, text)
+            .with_context(|| format!("failed to write {}", self.path.display()))?;
+        Ok(())
+    }
 }
