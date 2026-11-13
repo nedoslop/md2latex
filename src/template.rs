@@ -2,6 +2,11 @@
 //!
 //! All strings that reach the final document are either user content or
 //! pulled from the configuration; the code below only wires context keys.
+//!
+//! Template files are selected by explicit paths from the config (see
+//! [`crate::config::Templates`]) — there is no implicit "document type →
+//! template" mapping, which keeps this module independent of any
+//! particular institution's template layout.
 
 use crate::config::{Config, Student};
 use anyhow::{Context, Result};
@@ -12,7 +17,7 @@ use tera::{Context as TeraContext, Tera};
 /// LaTeX source.
 pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     let base_path = cfg.templates.base_path();
-    let title_path = cfg.templates.title_path_for(&cfg.project.doc_type);
+    let title_path = cfg.templates.title_path();
 
     let base_content = fs::read_to_string(&base_path)
         .with_context(|| format!("failed to read template: {}", base_path.display()))?;

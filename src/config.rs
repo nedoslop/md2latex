@@ -5,6 +5,11 @@
 //! through the TOML configuration (or through templates). Defaults that
 //! remain here are neutral English fallbacks, so the converter works out of
 //! the box for English documents and can be fully localized via config.
+//!
+//! Template selection is **path-based**: the config points directly at the
+//! base and title `.tex.tera` files. There is no code-side mapping from a
+//! "document type" to a template, which keeps the converter agnostic of any
+//! particular university's template layout.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -38,7 +43,15 @@ pub struct Config {
 /// Project-level settings: input file, output directory, build options.
 #[derive(Debug, Deserialize)]
 pub struct Project {
+    /// Informational label for the document being built (e.g.
+    /// `"course_work"`, `"master_thesis"`, `"report"`).
+    ///
+    /// It is **not** used to select a template — templates are chosen by
+    /// explicit paths in [`Templates`]. This field exists purely so the
+    /// configuration can record what kind of document is being built,
+    /// which is useful for logging and future extensions.
     pub doc_type: String,
+
     pub input: String,
     pub output_dir: String,
     #[serde(default)]
@@ -135,8 +148,8 @@ pub struct Style {
     #[serde(default = "default_subsection_after_skip")]
     pub subsection_after_skip: String,
 
-    /// Default appendix designator (used if an appendix heading has no
-    /// explicit letter, e.g. "APPENDIX" with no "A").
+    /// Default appendix designator used when an appendix heading contains
+    /// no explicit letter (e.g. "APPENDIX" with no "A").
     #[serde(default = "default_appendix_default_letter")]
     pub appendix_default_letter: String,
 
@@ -428,35 +441,43 @@ impl Default for Lists {
     }
 }
 
+/// Template file locations.
+///
+/// Both `base` and `title` are **file paths**, not document-type keys. A
+/// relative path is resolved against `dir`; an absolute path (or one
+/// starting with `..`) is used as-is via `Path::join`. This keeps the code
+/// agnostic of any particular institution's template layout: to use a
+/// different title page, simply point `title` at another file.
 #[derive(Debug, Deserialize)]
 pub struct Templates {
     #[serde(default = "default_templates_dir")]
     pub dir: String,
+
+    /// Path to the main LaTeX template (relative to `dir` unless absolute).
     #[serde(default = "default_base_template")]
     pub base: String,
-    #[serde(default = "default_title_course")]
-    pub title_course: String,
-    #[serde(default = "default_title_bachelor")]
-    pub title_bachelor: String,
-    #[serde(default = "default_title_master")]
-    pub title_master: String,
+
+    /// Path to the title-page LaTeX template (relative to `dir` unless
+    /// absolute). This is the single source of truth for title-page
+    /// rendering — there is no fallback mapping by `doc_type`.
+    #[serde(default = "default_title_template")]
+    pub title: String,
 }
+
 fn default_templates_dir() -> String { "templates".into() }
 fn default_base_template() -> String { "base.tex.tera".into() }
-fn default_title_course() -> String { "title_course.tex.tera".into() }
-fn default_title_bachelor() -> String { "title_bachelor.tex.tera".into() }
-fn default_title_master() -> String { "title_master.tex.tera".into() }
+fn default_title_template() -> String { "title.tex.tera".into() }
+
 impl Default for Templates {
     fn default() -> Self {
         Self {
             dir: default_templates_dir(),
             base: default_base_template(),
-            title_course: default_title_course(),
-            title_bachelor: default_title_bachelor(),
-            title_master: default_title_master(),
+            title: default_title_template(),
         }
     }
 }
+
 impl Templates {
     pub fn dir_path(&self) -> PathBuf {
         PathBuf::from(&self.dir)
@@ -464,13 +485,10 @@ impl Templates {
     pub fn base_path(&self) -> PathBuf {
         self.dir_path().join(&self.base)
     }
-    pub fn title_path_for(&self, doc_type: &str) -> PathBuf {
-        let name = match doc_type {
-            "vkr_master" => &self.title_master,
-            "course_work" => &self.title_course,
-            _ => &self.title_bachelor,
-        };
-        self.dir_path().join(name)
+    /// Full path to the title-page template. Absolute `title` values win
+    /// over `dir`, matching `PathBuf::join` semantics.
+    pub fn title_path(&self) -> PathBuf {
+        self.dir_path().join(&self.title)
     }
 }
 

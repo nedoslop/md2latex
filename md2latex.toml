@@ -1,4 +1,7 @@
 [project]
+# Informational label only — templates are selected by explicit paths
+# under [templates]. This field is shown in the build log and can be
+# freely changed without affecting template selection.
 doc_type = "course_work"
 input = "examples/input.md"
 output_dir = "out"
@@ -87,11 +90,12 @@ tolerance = 9999
 hbadness = 10000
 
 [templates]
-dir = "templates"
-base = "base.tex.tera"
-title_course = "title_course.tex.tera"
-title_bachelor = "title_bachelor.tex.tera"
-title_master = "title_master.tex.tera"
+# `dir` is the base directory for relative `base` / `title` paths. A path
+# that is absolute (or starts with `..`) is used as-is. Both `base` and
+# `title` are plain file paths — no document-type mapping is involved.
+dir   = "templates"
+base  = "base.tex.tera"
+title = "title_course.tex.tera"
 
 [links]
 colored = true

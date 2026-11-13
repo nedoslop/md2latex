@@ -26,6 +26,10 @@ fn main() -> Result<()> {
     let cfg =
         config::Config::from_file(&cli.config).context("failed to load configuration")?;
 
+    if !cfg.project.doc_type.is_empty() {
+        println!("Document type: {}", cfg.project.doc_type);
+    }
+
     let md_path = PathBuf::from(&cfg.project.input);
     let md_content = fs::read_to_string(&md_path)
         .with_context(|| format!("failed to read {}", md_path.display()))?;
