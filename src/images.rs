@@ -131,12 +131,9 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
 /// places it on the page at its natural size (one pixel = one dot at 300 dpi
 /// by default[reference:2]).
 fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
-    use printpdf::{
-        Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, XObjectTransform,
-    };
+    use printpdf::{Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, XObjectTransform};
 
-    let img =
-        image::open(src).with_context(|| format!("failed to open {}", src.display()))?;
+    let img = image::open(src).with_context(|| format!("failed to open {}", src.display()))?;
     let (w, h) = (img.width(), img.height());
     let dpi_f = dpi.max(1) as f32;
     let width_mm = (w as f32) * 25.4 / dpi_f;
@@ -167,8 +164,7 @@ fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
         .with_pages(vec![page])
         .save(&PdfSaveOptions::default(), &mut warnings);
 
-    fs::write(dst, &pdf_bytes)
-        .with_context(|| format!("failed to write {}", dst.display()))?;
+    fs::write(dst, &pdf_bytes).with_context(|| format!("failed to write {}", dst.display()))?;
     Ok(())
 }
 

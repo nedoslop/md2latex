@@ -6,8 +6,8 @@
 
 use crate::config::Config;
 use anyhow::Result;
-use comrak::options::Options;
 use comrak::nodes::{AstNode, NodeCodeBlock, NodeLink, NodeValue};
+use comrak::options::Options;
 use comrak::{parse_document, Arena};
 use regex::Regex;
 
