@@ -1,5 +1,6 @@
 \begin{titlepage}
 \thispagestyle{empty}
+\begin{singlespace} % Обязательно одинарный интервал для титульного листа!
 \begin{center}
 {\fontsize{14pt}{16.8pt}\selectfont
 Министерство науки и высшего образования РФ\\}
@@ -8,7 +9,7 @@
 образовательное учреждение высшего образования\\
 \textbf{\MakeUppercase{«Сибирский федеральный университет»}}}
 
-\vspace{1.5cm}
+\vspace{1.2cm}
 
 {% if institute | trim != "" %}
 {\fontsize{14pt}{16.8pt}\selectfont {{ institute }}\par}
@@ -17,7 +18,7 @@
 {% endif %}
 {\fontsize{10pt}{12pt}\selectfont институт\par}
 
-\vspace{0.8cm}
+\vspace{0.6cm}
 
 {% if department | trim != "" %}
 {\fontsize{14pt}{16.8pt}\selectfont {{ department }}\par}
@@ -27,7 +28,7 @@
 {\fontsize{10pt}{12pt}\selectfont кафедра\par}
 \end{center}
 
-\vspace{2cm}
+\vspace{1.8cm}
 
 \begin{center}
 {\fontsize{14pt}{16.8pt}\selectfont\bfseries {{ doc_kind }}\par}
@@ -39,34 +40,32 @@
 {\fontsize{10pt}{12pt}\selectfont тема проекта (работы)\par}
 \end{center}
 
-\vspace{2cm}
+\vspace{1.8cm}
 
 \noindent
-\begin{tabularx}{\textwidth}{@{} l X r @{}}
-\begin{tabular}[t]{@{}l@{}}
-  \fontsize{14pt}{16.8pt}\selectfont Руководитель
-\end{tabular} &
+\begin{tabularx}{\textwidth}{@{} l X c @{\hspace{1cm}} l @{}}
+{\fontsize{14pt}{16.8pt}\selectfont Руководитель} &
 &
 \begin{tabular}[t]{@{}c@{}}
-  \rule{4cm}{0.4pt}\\
+  \rule{3.5cm}{0.4pt}\\
   {\fontsize{10pt}{12pt}\selectfont подпись, дата}
-\end{tabular}\hspace{1.5cm}
+\end{tabular} &
 \begin{tabular}[t]{@{}l@{}}
-  \fontsize{14pt}{16.8pt}\selectfont {{ supervisor }}\\
+  {\fontsize{14pt}{16.8pt}\selectfont {{ supervisor }}}\\
   {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
 \end{tabular} \\[1.5cm]
 
 \begin{tabular}[t]{@{}l@{}}
-  \fontsize{14pt}{16.8pt}\selectfont Студент{% if group | trim != "" %}, {{ group }}{% endif %}\\
+  {\fontsize{14pt}{16.8pt}\selectfont Студент{% if group | trim != "" %} {{ group }}{% endif %}{% if student_id | trim != "" %}, {{ student_id }}{% endif %}}\\
   {\fontsize{10pt}{12pt}\selectfont номер группы, зачетной книжки}
 \end{tabular} &
 &
 \begin{tabular}[t]{@{}c@{}}
-  \rule{4cm}{0.4pt}\\
+  \rule{3.5cm}{0.4pt}\\
   {\fontsize{10pt}{12pt}\selectfont подпись, дата}
-\end{tabular}\hspace{1.5cm}
+\end{tabular} &
 \begin{tabular}[t]{@{}l@{}}
-  \fontsize{14pt}{16.8pt}\selectfont {{ student }}\\
+  {\fontsize{14pt}{16.8pt}\selectfont {{ student }}}\\
   {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
 \end{tabular} \\
 \end{tabularx}
@@ -76,4 +75,5 @@
 \begin{center}
 {\fontsize{14pt}{16.8pt}\selectfont {{ city }} {{ year }}}
 \end{center}
+\end{singlespace}
 \end{titlepage}

@@ -1,5 +1,14 @@
 \documentclass[{{- font_size | trim -}},a4paper]{extarticle}
 
+% ========== Геометрия (СТУ 7.5-07) ==========
+\usepackage[
+  left={{- margin_left | trim -}},
+  right={{- margin_right | trim -}},
+  top={{- margin_top | trim -}},
+  bottom={{- margin_bottom | trim -}},
+  footskip=10mm
+]{geometry}
+
 % ========== Языки и шрифты ==========
 \usepackage{polyglossia}
 \setdefaultlanguage{russian}
@@ -23,15 +32,6 @@
   \newfontfamily\cyrillicfonttt{TeX Gyre Cursor}
 }
 
-% ========== Геометрия (СТУ 7.5-07) ==========
-\usepackage[
-  left={{- margin_left | trim -}},
-  right={{- margin_right | trim -}},
-  top={{- margin_top | trim -}},
-  bottom={{- margin_bottom | trim -}},
-  footskip=10mm
-]{geometry}
-
 % ========== Интервалы и абзацы ==========
 \usepackage{setspace}
 {% if line_spacing == "double" %}\doublespacing
@@ -41,7 +41,6 @@
 \usepackage{indentfirst}
 \setlength{\parindent}{ {{- paragraph_indent | trim -}} }
 \setlength{\parskip}{0pt}
-\sloppy
 
 % ========== Графика, таблицы, формулы ==========
 \usepackage{graphicx}
@@ -54,14 +53,15 @@
 \usepackage{caption}
 \usepackage{xcolor}
 
-% ========== Подписи ==========
+% ========== Подписи (СТУ 7.8.3, 7.7.3) ==========
 \DeclareCaptionLabelSeparator{stu}{~\textendash~}
 \captionsetup[figure]{
   labelsep=stu,
   justification=centering,
   position={% if figure_caption_below %}bottom{% else %}top{% endif %},
   singlelinecheck=false,
-  font={normalsize}
+  font={normalsize},
+  indention=0pt
 }
 \captionsetup[table]{
   labelsep=stu,
@@ -69,17 +69,25 @@
   position={% if table_caption_above %}top{% else %}bottom{% endif %},
   singlelinecheck=false,
   font={normalsize},
-  skip=4pt
+  skip=4pt,
+  indention=0pt
 }
 
-% ========== Списки ==========
+% ========== Списки (СТУ 7.4.3) ==========
 \usepackage{enumitem}
+% Маркер с красной строки (12.5мм), последующие строки от левого поля (leftmargin=0pt)
 \setlist[itemize]{
-  label=--, leftmargin=\parindent, labelsep=0.5em,
+  label=--,
+  wide=\parindent,
+  leftmargin=0pt,
+  labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
 \setlist[enumerate]{
-  label=\arabic*., leftmargin=\parindent, labelsep=0.5em,
+  label=\arabic*), % цифра с круглой скобкой по СТУ 7.4.3
+  wide=\parindent,
+  leftmargin=0pt,
+  labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
 
@@ -103,34 +111,36 @@
   \renewcommand{\headrulewidth}{0pt}
 }
 
-% ========== Заголовки разделов ==========
-\usepackage{titlesec}
+% ========== Заголовки разделов (СТУ 7.3) ==========
+\usepackage[indentafter]{titlesec}
 
-{% if section_bold %}
+% Разделы: с абзацного отступа (12.5мм), полужирный, без переносов, интервал после - 1 пустая строка (15мм / \baselineskip)
 \titleformat{\section}[block]
-  {\normalfont\bfseries\{{ section_align }}{% if section_uppercase %}\MakeUppercase{% endif %}}
-  {\thesection~}{0pt}{}
-{% else %}
-\titleformat{\section}[block]
-  {\normalfont\{{ section_align }}{% if section_uppercase %}\MakeUppercase{% endif %}}
-  {\thesection~}{0pt}{}
-{% endif %}
-\titlespacing*{\section}{0pt}{ {{- section_before_skip | trim -}} }{ {{- section_after_skip | trim -}} }
+  {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
+  {\hspace{\parindent}\thesection}{0.5em}
+  {}
+\titlespacing*{\section}{0pt}{0pt}{\baselineskip}
 
+% Подразделы: с абзацного отступа (12.5мм), полужирный, интервал до и после - 1 пустая строка
 \titleformat{\subsection}[block]
-  {\normalfont\bfseries\hspace{\parindent}}
-  {\thesubsection~}{0pt}{}
-\titlespacing*{\subsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
+  {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
+  {\hspace{\parindent}\thesubsection}{0.5em}
+  {}
+\titlespacing*{\subsection}{0pt}{\baselineskip}{\baselineskip}
 
+% Пункты: с абзацного отступа (12.5мм), полужирный
 \titleformat{\subsubsection}[block]
-  {\normalfont\bfseries\hspace{\parindent}}
-  {\thesubsubsection~}{0pt}{}
-\titlespacing*{\subsubsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
+  {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
+  {\hspace{\parindent}\thesubsubsection}{0.5em}
+  {}
+\titlespacing*{\subsubsection}{0pt}{\baselineskip}{\baselineskip}
 
 % ========== Содержание ==========
 \usepackage{tocloft}
 \renewcommand{\cfttoctitlefont}{\hfill\normalfont\bfseries}
 \renewcommand{\cftaftertoctitle}{\hfill}
+\setlength{\cftbeforetoctitleskip}{0pt}
+\setlength{\cftaftertoctitleskip}{\baselineskip}
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftsecfont}{\normalfont}
 \renewcommand{\cftsecpagefont}{\normalfont}
@@ -153,7 +163,8 @@
   linktoc=all,
   pdfborder={% if links_boxed %}0 0 1{% else %}0 0 0{% endif %},
   pdftitle={ {{- topic | trim -}} },
-  pdfauthor={ {{- student_author | trim -}} }
+  pdfauthor={ {{- student_author | trim -}} },
+  pdfpagelayout={SinglePage}
 }
 \urlstyle{same}
 \usepackage{xurl}
@@ -186,8 +197,8 @@
 \clearpage
 \phantomsection
 \addcontentsline{toc}{section}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
-\begin{center}\textbf{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}\end{center}
-\vspace{12pt}
+{\centering\textbf{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}\par}
+\vspace{\baselineskip}
 \printbibliography[heading=none]
 {% endif %}
 

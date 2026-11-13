@@ -21,30 +21,17 @@ paragraph_indent = "12.5mm"
 line_spacing = "onehalf"
 numbering = "within_section"
 
-section_before_skip = "12pt"
-section_after_skip = "12pt"
-subsection_before_skip = "12pt"
-subsection_after_skip = "6pt"
-
-section_align = "center"
+# По СТУ заголовки разделов выравниваются по левому краю (с абзацного отступа), не КАПСОМ
+section_align = "raggedright"
 section_bold = true
 section_uppercase = false
 
 caption_font_size = "14pt"
+# По СТУ допускается шрифт в таблицах 10, 12 или 14 пт (12 пт - оптимально)
 table_font_size = "12pt"
 
+# Структурные заголовки (ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ и т.д.) - КАПСОМ и по центру
 structural_heading_uppercase = true
-title_page_fill_empty = true
-
-structural_headings = [
-  "ВВЕДЕНИЕ", "ЗАКЛЮЧЕНИЕ", "СОДЕРЖАНИЕ", "РЕФЕРАТ", "АННОТАЦИЯ",
-  "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", "СПИСОК СОКРАЩЕНИЙ", "ПРИЛОЖЕНИЕ", "ОСНОВНАЯ ЧАСТЬ",
-]
-structural_headings_unnumbered_subsections = [
-  "ВВЕДЕНИЕ", "ЗАКЛЮЧЕНИЕ", "РЕФЕРАТ", "АННОТАЦИЯ", "СОДЕРЖАНИЕ",
-  "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", "СПИСОК СОКРАЩЕНИЙ", "ПРИЛОЖЕНИЕ",
-]
-structural_headings_newpage = true
 
 figure_caption_below = true
 table_caption_above = true

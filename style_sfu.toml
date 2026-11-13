@@ -28,7 +28,7 @@ subsection_after_skip = "6pt"
 
 section_align = "center"
 section_bold = true
-section_uppercase = false
+section_uppercase = true
 
 caption_font_size = "14pt"
 table_font_size = "12pt"
@@ -38,7 +38,7 @@ title_page_fill_empty = true
 
 structural_headings = [
   "ВВЕДЕНИЕ", "ЗАКЛЮЧЕНИЕ", "СОДЕРЖАНИЕ", "РЕФЕРАТ", "АННОТАЦИЯ",
-  "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", "СПИСОК СОКРАЩЕНИЙ", "ПРИЛОЖЕНИЕ", "ОСНОВНАЯ ЧАСТЬ",
+  "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", "СПИСОК СОКРАЩЕНИЙ", "ПРИЛОЖЕНИЕ",
 ]
 structural_headings_unnumbered_subsections = [
   "ВВЕДЕНИЕ", "ЗАКЛЮЧЕНИЕ", "РЕФЕРАТ", "АННОТАЦИЯ", "СОДЕРЖАНИЕ",
@@ -69,13 +69,13 @@ doc_kind = "КУРСОВАЯ РАБОТА"
 direction_code = "09.03.04"
 direction_name = "Программная инженерия"
 topic = "Разработка конвертера Markdown в LaTeX"
-student = "И. И. Иванов"
+student = "Иванов Иван Иванович"
 student_id = "1234567"
 group = "ПИ21-01"
-supervisor = "П. П. Петров"
+supervisor = "Петров Пётр Петрович"
 supervisor_title = "доцент, канд. техн. наук"
 reviewer = ""
-year = "2026"
+year = "2025"
 city = "Красноярск"
 
 [bibliography]

@@ -5,7 +5,12 @@ use comrak::{parse_document, Arena, ComrakOptions};
 use regex::Regex;
 
 #[derive(Clone, Copy, PartialEq)]
-enum Ctx { Ordinary, StructuralNumbered, StructuralUnnumbered, Appendix }
+enum Ctx {
+    Ordinary,
+    StructuralNumbered,
+    StructuralUnnumbered,
+    Appendix,
+}
 
 struct PendingTableCaption {
     label: Option<String>,
@@ -25,9 +30,19 @@ pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let mut out = String::new();
     let mut ctx = Ctx::Ordinary;
     let mut pending: Option<PendingTableCaption> = None;
+    let mut skip_next_section_pagebreak = false;
+    let mut in_bibliography = false;
 
     for node in root.children() {
-        render_node(node, &mut out, cfg, &mut ctx, &mut pending)?;
+        render_node(
+            node,
+            &mut out,
+            cfg,
+            &mut ctx,
+            &mut pending,
+            &mut skip_next_section_pagebreak,
+            &mut in_bibliography,
+        )?;
     }
     if let Some(pt) = pending.take() {
         out.push_str(&escape_latex(&pt.caption));
@@ -42,6 +57,8 @@ fn render_node<'a>(
     cfg: &Config,
     ctx: &mut Ctx,
     pending: &mut Option<PendingTableCaption>,
+    skip_next_section_pagebreak: &mut bool,
+    in_bibliography: &mut bool,
 ) -> Result<()> {
     let value = node.data.borrow().value.clone();
 
@@ -54,40 +71,84 @@ fn render_node<'a>(
 
     match value {
         NodeValue::Heading(h) => {
-            let clean = strip_heading_number(&extract_text(node));
-            if h.level == 1 && is_structural(&clean, cfg) {
-                if cfg.style.structural_headings_newpage {
-                    out.push_str("\\clearpage\n");
-                }
-                let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
-                *ctx = if unnumbered { Ctx::StructuralUnnumbered } else { Ctx::StructuralNumbered };
-                if is_appendix_heading(&clean, cfg) {
-                    *ctx = Ctx::Appendix;
-                    render_appendix_heading(&clean, out, cfg)?;
-                } else {
-                    render_structural_heading(&clean, out, cfg)?;
+            let raw_text = extract_text(node);
+            // Убираем номер в начале и точку в конце (по СТУ точки в заголовках запрещены)
+            let clean = strip_heading_number(&raw_text)
+                .trim_end_matches('.')
+                .to_string();
+
+            if h.level == 1 {
+                if is_structural(&clean, cfg) {
+                    if cfg.style.structural_headings_newpage {
+                        out.push_str("\\clearpage\n");
+                    }
+                    let upper = clean.trim().to_uppercase();
+                    *in_bibliography = upper == "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ";
+                    *skip_next_section_pagebreak = upper == "ОСНОВНАЯ ЧАСТЬ";
+
+                    let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
+                    *ctx = if unnumbered {
+                        Ctx::StructuralUnnumbered
+                    } else {
+                        Ctx::StructuralNumbered
+                    };
+                    if is_appendix_heading(&clean, cfg) {
+                        *ctx = Ctx::Appendix;
+                        render_appendix_heading(&clean, out, cfg)?;
+                    } else {
+                        render_structural_heading(&clean, out, cfg)?;
+                    }
                 }
             } else {
-                let (cmd, numbered) = match (*ctx, h.level) {
-                    (Ctx::StructuralUnnumbered, 2) => ("section*", false),
-                    (Ctx::StructuralUnnumbered, 3) => ("subsection*", false),
-                    (Ctx::StructuralUnnumbered, _) => ("subsubsection*", false),
-                    (Ctx::StructuralNumbered, 2) => ("section", true),
-                    (Ctx::StructuralNumbered, 3) => ("subsection", true),
-                    (Ctx::StructuralNumbered, _) => ("subsubsection", true),
-                    (Ctx::Appendix, 2) => ("subsection", true),
-                    (Ctx::Appendix, 3) => ("subsubsection", true),
-                    (Ctx::Appendix, _) => ("paragraph", true),
-                    (Ctx::Ordinary, 2) => ("subsection", true),
-                    (Ctx::Ordinary, 3) => ("subsubsection", true),
-                    (Ctx::Ordinary, _) => ("paragraph", true),
-                };
-                let display = to_title_case_if_upper(&clean);
-                if !numbered {
-                    let toc_cmd = cmd.trim_end_matches('*');
-                    out.push_str(&format!("\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n\n", toc_cmd, escape_latex(&display), cmd, escape_latex(&display)));
+                *in_bibliography = false;
+                let is_numbered_section = h.level == 2
+                    && raw_text
+                        .trim()
+                        .chars()
+                        .next()
+                        .map_or(false, |c| c.is_ascii_digit());
+                if is_numbered_section {
+                    *ctx = Ctx::StructuralNumbered;
+                }
+
+                if *ctx == Ctx::StructuralUnnumbered {
+                    // Без ручного \indent! Новый абзац в LaTeX сам начинается с \parindent (12.5мм)
+                    out.push_str(&format!(
+                        "\\textbf{{{}}}\\par\n\n",
+                        escape_latex(&to_title_case_if_upper(&clean))
+                    ));
                 } else {
-                    out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(&display)));
+                    let (cmd, numbered) = match (*ctx, h.level) {
+                        (Ctx::StructuralNumbered, 2) => ("section", true),
+                        (Ctx::StructuralNumbered, 3) => ("subsection", true),
+                        (Ctx::StructuralNumbered, _) => ("subsubsection", true),
+                        (Ctx::Appendix, 2) => ("subsection", true),
+                        (Ctx::Appendix, 3) => ("subsubsection", true),
+                        (Ctx::Appendix, _) => ("paragraph", true),
+                        (Ctx::Ordinary, 2) => ("subsection", true),
+                        (Ctx::Ordinary, 3) => ("subsubsection", true),
+                        (Ctx::Ordinary, _) => ("paragraph", true),
+                        _ => ("section", true),
+                    };
+                    let display = to_title_case_if_upper(&clean);
+
+                    if cmd == "section" {
+                        if *skip_next_section_pagebreak {
+                            *skip_next_section_pagebreak = false;
+                        } else {
+                            out.push_str("\\clearpage\n");
+                        }
+                    }
+
+                    if !numbered {
+                        let toc_cmd = cmd.trim_end_matches('*');
+                        out.push_str(&format!(
+                                    "\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n\n",
+                                    toc_cmd, escape_latex(&display), cmd, escape_latex(&display)
+                                ));
+                    } else {
+                        out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(&display)));
+                    }
                 }
             }
         }
@@ -96,7 +157,10 @@ fn render_node<'a>(
             if raw_text.starts_with("#tbl:") {
                 let after = &raw_text[5..];
                 let (label, caption) = if let Some(sp) = after.find(char::is_whitespace) {
-                    (Some(format!("tbl:{}", &after[..sp])), after[sp..].trim().to_string())
+                    (
+                        Some(format!("tbl:{}", &after[..sp])),
+                        after[sp..].trim().to_string(),
+                    )
                 } else {
                     (Some(format!("tbl:{}", after)), String::new())
                 };
@@ -108,7 +172,10 @@ fn render_node<'a>(
             if children.len() == 1 {
                 if let NodeValue::Math(m) = &children[0].data.borrow().value {
                     if m.display_math {
-                        out.push_str(&format!("\\begin{{equation}}\n{}\n\\end{{equation}}\n\n", m.literal.trim()));
+                        out.push_str(&format!(
+                            "\\begin{{equation}}\n{}\n\\end{{equation}}\n\n",
+                            m.literal.trim()
+                        ));
                         return Ok(());
                     }
                 }
@@ -140,16 +207,28 @@ fn render_node<'a>(
             }
         }
         NodeValue::CodeBlock(code) => {
-            out.push_str(&format!("\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n", code.literal.trim_end()));
+            out.push_str(&format!(
+                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
+                code.literal.trim_end()
+            ));
         }
         NodeValue::List(list) => {
-            let env = if list.list_type == comrak::nodes::ListType::Ordered { "enumerate" } else { "itemize" };
-            out.push_str(&format!("\\begin{{{}}}\n", env));
+            let is_ordered = list.list_type == comrak::nodes::ListType::Ordered;
+            let env = if is_ordered { "enumerate" } else { "itemize" };
+            let opts = if is_ordered && *in_bibliography {
+                "[label=\\arabic*.]"
+            } else {
+                ""
+            };
+
+            out.push_str(&format!("\\begin{{{}}}{}\n", env, opts));
             for child in node.children() {
                 if let NodeValue::Item(_) = &child.data.borrow().value {
                     let mut item = String::new();
                     for (idx, block) in child.children().enumerate() {
-                        if idx > 0 { item.push(' '); }
+                        if idx > 0 {
+                            item.push(' ');
+                        }
                         render_inline(block, &mut item, cfg)?;
                     }
                     out.push_str(&format!("  \\item {}\n", item.trim()));
@@ -165,13 +244,29 @@ fn render_node<'a>(
         NodeValue::BlockQuote => {
             out.push_str("\\begin{quote}\n");
             for child in node.children() {
-                render_node(child, out, cfg, ctx, pending)?;
+                render_node(
+                    child,
+                    out,
+                    cfg,
+                    ctx,
+                    pending,
+                    skip_next_section_pagebreak,
+                    in_bibliography,
+                )?;
             }
             out.push_str("\\end{quote}\n\n");
         }
         _ => {
             for child in node.children() {
-                render_node(child, out, cfg, ctx, pending)?;
+                render_node(
+                    child,
+                    out,
+                    cfg,
+                    ctx,
+                    pending,
+                    skip_next_section_pagebreak,
+                    in_bibliography,
+                )?;
             }
         }
     }
@@ -188,7 +283,12 @@ fn is_structural(text: &str, cfg: &Config) -> bool {
 
 fn is_appendix_heading(text: &str, cfg: &Config) -> bool {
     let t = text.trim().to_uppercase();
-    if let Some(app) = cfg.style.structural_list().iter().find(|h| h.trim().eq_ignore_ascii_case("ПРИЛОЖЕНИЕ")) {
+    if let Some(app) = cfg
+        .style
+        .structural_list()
+        .iter()
+        .find(|h| h.trim().eq_ignore_ascii_case("ПРИЛОЖЕНИЕ"))
+    {
         let prefix = format!("{} ", app.trim().to_uppercase());
         t.starts_with(&prefix)
     } else {
@@ -197,14 +297,68 @@ fn is_appendix_heading(text: &str, cfg: &Config) -> bool {
 }
 
 fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Result<()> {
-    let display = if cfg.style.structural_heading_uppercase { text.trim().to_uppercase() } else { to_title_case_if_upper(text) };
-    out.push_str(&format!("\\phantomsection\n\\addcontentsline{{toc}}{{section}}{{{}}}\n\\begin{{center}}\\textbf{{{}}}\\end{{center}}\n\\vspace{{12pt}}\n\n", escape_latex(&display), escape_latex(&display)));
+    let display = if cfg.style.structural_heading_uppercase {
+        text.trim().to_uppercase()
+    } else {
+        to_title_case_if_upper(text)
+    };
+    out.push_str(&format!(
+        "\\phantomsection\n\
+         \\addcontentsline{{toc}}{{section}}{{{}}}\n\
+         {{\\centering\\textbf{{{}}}\\par}}\n\
+         \\vspace{{\\baselineskip}}\n\n",
+        escape_latex(&display),
+        escape_latex(&display)
+    ));
     Ok(())
 }
 
-fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result<()> {
-    let display = if cfg.style.structural_heading_uppercase { text.trim().to_uppercase() } else { text.trim().to_string() };
-    out.push_str(&format!("\\clearpage\n\\phantomsection\n\\addcontentsline{{toc}}{{section}}{{{}}}\n\\begin{{center}}\\textbf{{{}}}\\end{{center}}\n\\vspace{{6pt}}\n\n", escape_latex(&display), escape_latex(&display)));
+fn render_appendix_heading(text: &str, out: &mut String, _cfg: &Config) -> Result<()> {
+    // Ожидаем заголовок вида "ПРИЛОЖЕНИЕ А Название приложения" или "ПРИЛОЖЕНИЕ А"
+    let trimmed = text.trim();
+    let rest = trimmed
+        .strip_prefix("ПРИЛОЖЕНИЕ")
+        .or_else(|| trimmed.strip_prefix("Приложение"))
+        .unwrap_or(trimmed)
+        .trim();
+
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let letter = parts.next().unwrap_or("А").to_uppercase();
+    let title = parts.next().unwrap_or("").trim();
+
+    let app_label = format!("ПРИЛОЖЕНИЕ {}", letter);
+    let toc_entry = if title.is_empty() {
+        app_label.clone()
+    } else {
+        format!("{} {}", app_label, to_title_case_if_upper(title))
+    };
+
+    out.push_str(&format!(
+        "\\clearpage\n\
+         \\phantomsection\n\
+         \\addcontentsline{{toc}}{{section}}{{{}}}\n\
+         \\setcounter{{figure}}{{0}}\n\
+         \\setcounter{{table}}{{0}}\n\
+         \\setcounter{{equation}}{{0}}\n\
+         \\renewcommand{{\\thefigure}}{{{}.\\arabic{{figure}}}}\n\
+         \\renewcommand{{\\thetable}}{{{}.\\arabic{{table}}}}\n\
+         \\renewcommand{{\\theequation}}{{{}.\\arabic{{equation}}}}\n\
+         {{\\centering\\textbf{{{}}}\\par}}\n",
+        escape_latex(&toc_entry),
+        letter,
+        letter,
+        letter,
+        escape_latex(&app_label)
+    ));
+
+    if !title.is_empty() {
+        out.push_str(&format!(
+            "\\vspace{{0.5\\baselineskip}}\n\
+             {{\\centering\\textbf{{{}}}\\par}}\n",
+            escape_latex(&to_title_case_if_upper(title))
+        ));
+    }
+    out.push_str("\\vspace{\\baselineskip}\n\n");
     Ok(())
 }
 
@@ -227,10 +381,18 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
         match v {
             NodeValue::Text(t) => out.push_str(&linkify_text(&t)),
             NodeValue::Code(c) => {
-                if c.literal.starts_with('\\') { out.push_str(&c.literal); } else { out.push_str(&format!("\\texttt{{{}}}", escape_latex(&c.literal))); }
+                if c.literal.starts_with('\\') {
+                    out.push_str(&c.literal);
+                } else {
+                    out.push_str(&format!("\\texttt{{{}}}", escape_latex(&c.literal)));
+                }
             }
             NodeValue::Math(m) => {
-                if m.display_math { out.push_str(&format!("\\[{}\\]", m.literal)); } else { out.push_str(&format!("${}$", m.literal)); }
+                if m.display_math {
+                    out.push_str(&format!("\\[{}\\]", m.literal));
+                } else {
+                    out.push_str(&format!("${}$", m.literal));
+                }
             }
             NodeValue::Strong => {
                 out.push_str("\\textbf{");
@@ -243,9 +405,16 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
                 out.push('}');
             }
             NodeValue::Link(link) => {
-                let is_external = link.url.starts_with("http://") || link.url.starts_with("https://") || link.url.starts_with("ftp://") || link.url.starts_with("mailto:");
+                let is_external = link.url.starts_with("http://")
+                    || link.url.starts_with("https://")
+                    || link.url.starts_with("ftp://")
+                    || link.url.starts_with("mailto:");
                 if is_external && cfg.links.colored {
-                    out.push_str(&format!("\\href{{{}}}{{\\textcolor{{{}}}{{", escape_url(&link.url), cfg.links.url_color));
+                    out.push_str(&format!(
+                        "\\href{{{}}}{{\\textcolor{{{}}}{{",
+                        escape_url(&link.url),
+                        cfg.links.url_color
+                    ));
                     render_inline(child, out, cfg)?;
                     out.push_str("}}");
                 } else {
@@ -262,24 +431,64 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
     Ok(())
 }
 
-fn render_image<'a>(node: &'a AstNode<'a>, link: &NodeLink, out: &mut String, cfg: &Config) -> Result<()> {
+fn render_image<'a>(
+    node: &'a AstNode<'a>,
+    link: &NodeLink,
+    out: &mut String,
+    cfg: &Config,
+) -> Result<()> {
     let src = &link.url;
     let title_raw = link.title.clone();
-    let (label, width, title_caption) = parse_image_title(&title_raw, &cfg.style.default_figure_width);
-    let alt_text = { let mut s = String::new(); for c in node.children() { if let NodeValue::Text(t) = &c.data.borrow().value { s.push_str(t); } } s.trim().to_string() };
-    let final_caption = if !alt_text.is_empty() { Some(alt_text) } else { title_caption };
-    let width_spec = if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') { width.clone() } else { format!("{}\\textwidth", width) };
-    let interpolate_opt = if cfg.images.interpolate { ",interpolate=true" } else { "" };
+    let (label, width, title_caption) =
+        parse_image_title(&title_raw, &cfg.style.default_figure_width);
+
+    let alt_text = {
+        let mut s = String::new();
+        for c in node.children() {
+            if let NodeValue::Text(t) = &c.data.borrow().value {
+                s.push_str(t);
+            }
+        }
+        s.trim().to_string()
+    };
+    let final_caption = if !alt_text.is_empty() {
+        Some(alt_text.trim_end_matches('.').to_string())
+    } else {
+        title_caption.map(|c| c.trim_end_matches('.').to_string())
+    };
+
+    let width_spec =
+        if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') {
+            width.clone()
+        } else {
+            format!("{}\\textwidth", width)
+        };
+    let interpolate_opt = if cfg.images.interpolate {
+        ",interpolate=true"
+    } else {
+        ""
+    };
 
     out.push_str("\\begin{figure}[H]\n  \\centering\n");
     if !cfg.style.figure_caption_below {
-        if let Some(ref c) = final_caption { out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c))); }
-        if let Some(ref l) = label { out.push_str(&format!("  \\label{{{}}}\n", l)); }
+        if let Some(ref c) = final_caption {
+            out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+        }
+        if let Some(ref l) = label {
+            out.push_str(&format!("  \\label{{{}}}\n", l));
+        }
     }
-    out.push_str(&format!("  \\includegraphics[width={}{}]{{{}}}\n", width_spec, interpolate_opt, src));
+    out.push_str(&format!(
+        "  \\includegraphics[width={}{}]{{{}}}\n",
+        width_spec, interpolate_opt, src
+    ));
     if cfg.style.figure_caption_below {
-        if let Some(ref c) = final_caption { out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c))); }
-        if let Some(ref l) = label { out.push_str(&format!("  \\label{{{}}}\n", l)); }
+        if let Some(ref c) = final_caption {
+            out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+        }
+        if let Some(ref l) = label {
+            out.push_str(&format!("  \\label{{{}}}\n", l));
+        }
     }
     out.push_str("\\end{figure}\n\n");
     Ok(())
@@ -291,18 +500,36 @@ fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, Strin
     let mut width = default_width.to_string();
     if rest.starts_with('#') {
         let after = &rest[1..];
-        if let Some(space) = after.find(char::is_whitespace) { label = Some(after[..space].to_string()); rest = after[space..].trim().to_string(); }
-        else { label = Some(after.to_string()); rest = String::new(); }
+        if let Some(space) = after.find(char::is_whitespace) {
+            label = Some(after[..space].to_string());
+            rest = after[space..].trim().to_string();
+        } else {
+            label = Some(after.to_string());
+            rest = String::new();
+        }
     }
     let mut caption_tokens: Vec<String> = Vec::new();
     for token in rest.split_whitespace() {
-        if let Some(w) = token.strip_prefix("width=") { width = w.to_string(); } else { caption_tokens.push(token.to_string()); }
+        if let Some(w) = token.strip_prefix("width=") {
+            width = w.to_string();
+        } else {
+            caption_tokens.push(token.to_string());
+        }
     }
-    let caption = if caption_tokens.is_empty() { None } else { Some(caption_tokens.join(" ")) };
+    let caption = if caption_tokens.is_empty() {
+        None
+    } else {
+        Some(caption_tokens.join(" "))
+    };
     (label, width, caption)
 }
 
-fn render_table<'a>(node: &'a AstNode<'a>, out: &mut String, meta: Option<PendingTableCaption>, cfg: &Config) -> Result<()> {
+fn render_table<'a>(
+    node: &'a AstNode<'a>,
+    out: &mut String,
+    meta: Option<PendingTableCaption>,
+    cfg: &Config,
+) -> Result<()> {
     let mut rows: Vec<Vec<String>> = Vec::new();
     for row_node in node.children() {
         if let NodeValue::TableRow(_) = &row_node.data.borrow().value {
@@ -317,34 +544,54 @@ fn render_table<'a>(node: &'a AstNode<'a>, out: &mut String, meta: Option<Pendin
             rows.push(cells);
         }
     }
-    if rows.is_empty() { return Ok(()); }
+    if rows.is_empty() {
+        return Ok(());
+    }
     let ncols = rows[0].len().max(1);
 
     out.push_str("\\begin{table}[H]\n  \\centering\n");
     if cfg.style.table_caption_above {
         if let Some(ref m) = meta {
-            if !m.caption.is_empty() { out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(&m.caption))); }
-            if let Some(ref l) = m.label { out.push_str(&format!("  \\label{{{}}}\n", l)); }
+            if !m.caption.is_empty() {
+                out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(&m.caption)));
+            }
+            if let Some(ref l) = m.label {
+                out.push_str(&format!("  \\label{{{}}}\n", l));
+            }
         }
     }
     let baseline = compute_baseline(&cfg.style.table_font_size);
-    out.push_str(&format!("  {{\\fontsize{{{}}}{{{}}}\\selectfont\n", cfg.style.table_font_size, baseline));
+    out.push_str(&format!(
+        "  {{\\fontsize{{{}}}{{{}}}\\selectfont\n",
+        cfg.style.table_font_size, baseline
+    ));
     out.push_str("  \\begin{tabularx}{\\textwidth}{|");
     out.push_str(&vec!["Y"; ncols].join("|"));
     out.push_str("|}\n  \\hline\n");
     for (i, row) in rows.iter().enumerate() {
         if i == 0 {
             let bold: Vec<String> = row.iter().map(|c| format!("\\textbf{{{}}}", c)).collect();
-            out.push_str("    "); out.push_str(&bold.join(" & ")); out.push_str(" \\\\\n  \\hline\\hline\n");
+            out.push_str("    ");
+            out.push_str(&bold.join(" & "));
+            out.push_str(" \\\\\n  \\hline\\hline\n");
         } else {
-            out.push_str("    "); out.push_str(&row.join(" & ")); out.push_str(" \\\\\n  \\hline\n");
+            out.push_str("    ");
+            out.push_str(&row.join(" & "));
+            out.push_str(" \\\\\n  \\hline\n");
         }
     }
     out.push_str("  \\end{tabularx}\n  }\n");
     if !cfg.style.table_caption_above {
         if let Some(ref m) = meta {
-            if !m.caption.is_empty() { out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(&m.caption))); }
-            if let Some(ref l) = m.label { out.push_str(&format!("  \\label{{{}}}\n", l)); }
+            if !m.caption.is_empty() {
+                out.push_str(&format!(
+                    "  \\caption{{{}}}\n",
+                    escape_latex(m.caption.trim_end_matches('.'))
+                ));
+            }
+            if let Some(ref l) = m.label {
+                out.push_str(&format!("  \\label{{{}}}\n", l));
+            }
         }
     }
     out.push_str("\\end{table}\n\n");
@@ -372,10 +619,17 @@ fn strip_heading_number(text: &str) -> String {
 
 fn to_title_case_if_upper(s: &str) -> String {
     let trimmed = s.trim();
-    if trimmed.is_empty() { return String::new(); }
+    if trimmed.is_empty() {
+        return String::new();
+    }
     let has_letters = trimmed.chars().any(|c| c.is_alphabetic());
-    let all_upper = trimmed.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_uppercase());
-    if !has_letters || !all_upper { return trimmed.to_string(); }
+    let all_upper = trimmed
+        .chars()
+        .filter(|c| c.is_alphabetic())
+        .all(|c| c.is_uppercase());
+    if !has_letters || !all_upper {
+        return trimmed.to_string();
+    }
     let lower = trimmed.to_lowercase();
     let mut chars = lower.chars();
     match chars.next() {
@@ -391,22 +645,33 @@ fn to_title_case_if_upper(s: &str) -> String {
 
 fn compute_baseline(size: &str) -> String {
     let s = size.trim();
-    if let Some(num) = s.strip_suffix("pt").and_then(|n| n.trim().parse::<f32>().ok()) {
+    if let Some(num) = s
+        .strip_suffix("pt")
+        .and_then(|n| n.trim().parse::<f32>().ok())
+    {
         format!("{}pt", (num * 1.2 * 10.0).round() / 10.0)
     } else {
         "16.8pt".to_string()
     }
 }
 
-fn escape_url(url: &str) -> String { url.replace('%', "\\%").replace('#', "\\#") }
+fn escape_url(url: &str) -> String {
+    url.replace('%', "\\%").replace('#', "\\#")
+}
 
 fn escape_latex(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {
-            '&' => out.push_str("\\&"), '%' => out.push_str("\\%"), '#' => out.push_str("\\#"),
-            '_' => out.push_str("\\_"), '$' => out.push_str("\\$"), '{' => out.push_str("\\{"),
-            '}' => out.push_str("\\}"), '\\' => out.push_str("\\textbackslash{}"), _ => out.push(ch),
+            '&' => out.push_str("\\&"),
+            '%' => out.push_str("\\%"),
+            '#' => out.push_str("\\#"),
+            '_' => out.push_str("\\_"),
+            '$' => out.push_str("\\$"),
+            '{' => out.push_str("\\{"),
+            '}' => out.push_str("\\}"),
+            '\\' => out.push_str("\\textbackslash{}"),
+            _ => out.push(ch),
         }
     }
     out
