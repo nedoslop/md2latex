@@ -124,11 +124,12 @@
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyfoot[C]{\noindent\thepage}
+% По центру физического листа A4 (компенсация разницы полей 30мм и 10мм):
+\fancyfoot[C]{\hspace*{-10mm}\thepage}
 \renewcommand{\headrulewidth}{0pt}
 \fancypagestyle{plain}{
   \fancyhf{}
-  \fancyfoot[C]{\noindent\thepage}
+  \fancyfoot[C]{\hspace*{-10mm}\thepage}
   \renewcommand{\headrulewidth}{0pt}
 }
 
@@ -159,6 +160,7 @@
 
 % ========== Содержание (п. 6.4.4 СТУ 7.5-07) ==========
 \usepackage{tocloft}
+
 \renewcommand{\cfttoctitlefont}{\hspace*{\fill}\normalfont\bfseries}
 \renewcommand{\cftaftertoctitle}{\hspace*{\fill}}
 \setlength{\cftbeforetoctitleskip}{0pt}
@@ -167,6 +169,7 @@
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftsubsubsecleader}{\cftdotfill{\cftdotsep}}
+\renewcommand{\cftdotsep}{1.5}
 
 \renewcommand{\cftsecfont}{\normalfont}
 \renewcommand{\cftsecpagefont}{\normalfont}
@@ -178,21 +181,15 @@
 \setlength{\cftbeforesecskip}{2pt}
 \setlength{\cftbeforesubsecskip}{2pt}
 \setlength{\cftbeforesubsubsecskip}{2pt}
-\renewcommand{\cftdotsep}{1.5}
 
-% Защита от наезда длинных заголовков на номера страниц
+% Отступы уровней слева (шаг ~2 знака по СТУ 7.5-07)
+\setlength{\cftsecindent}{0em}
+\setlength{\cftsubsecindent}{1.2em}
+\setlength{\cftsubsubsecindent}{2.4em}
+
+% Защита от наезда длинного текста на номер страницы
 \cftsetpnumwidth{1.8em}
 \cftsetrmarg{2.5em}
-
-% Ступенчатые отступы уровней (шаг ~2 знака по СТУ 7.5-07)
-\setlength{\cftsecindent}{0em}
-\setlength{\cftsecnumwidth}{1.5em}
-
-\setlength{\cftsubsecindent}{1.25em}
-\setlength{\cftsubsecnumwidth}{2.2em}
-
-\setlength{\cftsubsubsecindent}{2.5em}
-\setlength{\cftsubsubsecnumwidth}{3.0em}
 
 % ========== Ссылки ==========
 {% if links_colored %}
@@ -262,7 +259,10 @@
 
 \setcounter{page}{2}
 \clearpage
-\tableofcontents
+{
+  \renewcommand{\numberline}[1]{#1\ }
+  \tableofcontents
+}
 \clearpage
 
 {{ body }}
@@ -271,7 +271,7 @@
 \clearpage
 \phantomsection
 \addcontentsline{toc}{section}{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}
-{\noindent\centering\textbf{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}\par}
+{\centering\setlength{\parindent}{0pt}\textbf{СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ}\par}
 \vspace{\baselineskip}
 \printbibliography[heading=none]
 {% endif %}

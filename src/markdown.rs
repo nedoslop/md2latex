@@ -365,9 +365,9 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
 
     out.push_str(&format!(
         "\\phantomsection\n\
-         \\addcontentsline{{toc}}{{section}}{{{}}}\n\
-         {{\\noindent\\centering\\textbf{{{}}}\\par}}\n\
-         \\vspace{{\\baselineskip}}\n\n",
+             \\addcontentsline{{toc}}{{section}}{{{}}}\n\
+             {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n\
+             \\vspace{{\\baselineskip}}\n\n",
         escape_latex(&display),
         escape_latex(&display)
     ));
@@ -407,7 +407,7 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
          \\renewcommand{{\\thefigure}}{{{}.\\arabic{{figure}}}}\n\
          \\renewcommand{{\\thetable}}{{{}.\\arabic{{table}}}}\n\
          \\renewcommand{{\\theequation}}{{{}.\\arabic{{equation}}}}\n\
-         {{\\noindent\\centering\\textbf{{{}}}\\par}}\n",
+         {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n",
         escape_latex(&toc_entry),
         letter,
         letter,
@@ -418,7 +418,7 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
     if !title.is_empty() {
         out.push_str(&format!(
             "\\vspace{{0.5\\baselineskip}}\n\
-             {{\\noindent\\centering\\textbf{{{}}}\\par}}\n",
+             {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n",
             escape_latex(&to_title_case_if_upper(title))
         ));
     }

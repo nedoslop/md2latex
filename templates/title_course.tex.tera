@@ -2,7 +2,11 @@
 \thispagestyle{empty}
 \setlength{\parindent}{0pt}
 \begin{singlespace}
+
+% Сдвиг на -10mm компенсирует разницу полей (30mm слева, 10mm справа),
+% чтобы центрированные блоки стояли строго по центру физического листа A4.
 \begin{center}
+\hspace*{-20mm}\parbox{\textwidth}{\centering
 {\fontsize{14pt}{16.8pt}\selectfont
 Министерство науки и высшего образования РФ\par}
 {\fontsize{12pt}{14.4pt}\selectfont
@@ -27,11 +31,13 @@
 \rule{12cm}{0.4pt}\par
 {% endif %}
 {\fontsize{10pt}{12pt}\selectfont кафедра\par}
+}
 \end{center}
 
 \vspace{1.8cm}
 
 \begin{center}
+\hspace*{-20mm}\parbox{\textwidth}{\centering
 {\fontsize{14pt}{16.8pt}\selectfont\bfseries {{ doc_kind }}\par}
 
 \vspace{0.8cm}
@@ -39,13 +45,14 @@
 {\fontsize{14pt}{16.8pt}\selectfont {{ topic }}\par}
 \vspace{0.1cm}
 {\fontsize{10pt}{12pt}\selectfont тема проекта (работы)\par}
+}
 \end{center}
 
 \vspace{1.8cm}
 
-% ── Руководитель и студенты (ширина под текстовое поле 170 мм) ──────────
+% ── Руководитель и студенты (по границам текстового поля 30мм / 10мм) ──
 \noindent
-\begin{tabular}{@{} p{3.0cm} p{5.2cm} p{3.8cm} p{5.0cm} @{}}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} l l c l @{}}
 {\fontsize{14pt}{16.8pt}\selectfont Руководитель} &
 &
 \begin{tabular}[t]{@{}c@{}}
@@ -66,7 +73,7 @@
 \end{tabular}
 {% else %}
 \begin{tabular}[t]{@{}l@{}}
-  \rule{5.0cm}{0.4pt}\\
+  \rule{4.5cm}{0.4pt}\\
   {\fontsize{10pt}{12pt}\selectfont номер группы, зачетной книжки}
 \end{tabular}
 {% endif %} &
@@ -79,12 +86,14 @@
   {\fontsize{10pt}{12pt}\selectfont инициалы, фамилия}
 \end{tabular}{% if not loop.last %} \\[1.4cm]{% else %} \\{% endif %}
 {% endfor %}
-\end{tabular}
+\end{tabular*}
 
 \vfill
 
 \begin{center}
+\hspace*{-20mm}\parbox{\textwidth}{\centering
 {\fontsize{14pt}{16.8pt}\selectfont {{ city }} {{ year }}\par}
+}
 \end{center}
 \end{singlespace}
 \end{titlepage}
