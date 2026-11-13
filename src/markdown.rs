@@ -6,8 +6,9 @@
 
 use crate::config::Config;
 use anyhow::Result;
+use comrak::options::Options;
 use comrak::nodes::{AstNode, NodeCodeBlock, NodeLink, NodeValue};
-use comrak::{parse_document, Arena, ComrakOptions};
+use comrak::{parse_document, Arena};
 use regex::Regex;
 
 /// Rendering context: which kind of section we are currently in.
@@ -29,7 +30,7 @@ struct PendingTableCaption {
 
 pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let arena = Arena::new();
-    let mut options = ComrakOptions::default();
+    let mut options = Options::default();
     options.extension.table = true;
     options.extension.footnotes = true;
     // Built-in strikethrough is disabled: `~` and `~~` are handled by hand.

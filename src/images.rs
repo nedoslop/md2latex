@@ -124,25 +124,50 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
 }
 
 /// Rasterises a raster image into a single-page PDF at the given DPI.
+///
+/// Uses the `printpdf 0.12` API: `RawImage::from_dynamic_image` converts
+/// an `image::DynamicImage` into `printpdf`'s internal representation,
+/// `doc.add_image` registers it as an XObject, and `Op::UseXobject`
+/// places it on the page at its natural size (one pixel = one dot at 300 dpi
+/// by default[reference:2]).
 fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
-    use printpdf::*;
+    use printpdf::{
+        Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, XObjectTransform,
+    };
 
     let img =
-        image_crate::open(src).with_context(|| format!("failed to open {}", src.display()))?;
+        image::open(src).with_context(|| format!("failed to open {}", src.display()))?;
     let (w, h) = (img.width(), img.height());
     let dpi_f = dpi.max(1) as f32;
     let width_mm = (w as f32) * 25.4 / dpi_f;
     let height_mm = (h as f32) * 25.4 / dpi_f;
 
-    let (doc, page1, layer1) = PdfDocument::new("image", Mm(width_mm), Mm(height_mm), "Image");
-    let current_layer = doc.get_page(page1).get_layer(layer1);
+    // Convert `image::DynamicImage` into `printpdf::RawImage`.
+    // This requires the `images` feature (or a format-specific feature
+    // such as `png` / `jpeg`) to be enabled on `printpdf`.
+    let raw_image = RawImage::from_dynamic_image(img)
+        .map_err(|e| anyhow::anyhow!("failed to convert image to RawImage: {}", e))?;
 
-    let pdf_image = Image::from_dynamic_image(&img);
-    pdf_image.add_to_layer(current_layer, ImageTransform::default());
+    let mut doc = PdfDocument::new("image");
 
-    let file =
-        fs::File::create(dst).with_context(|| format!("failed to create {}", dst.display()))?;
-    doc.save(&mut std::io::BufWriter::new(file))
+    // Register the image as an XObject in the document and obtain its ID.
+    let image_xobject_id = doc.add_image(&raw_image);
+
+    // Place the image at the origin. Scaling can be adjusted via
+    // `XObjectTransform`; the default keeps the natural size.
+    let page_contents = vec![Op::UseXobject {
+        id: image_xobject_id,
+        transform: XObjectTransform::default(),
+    }];
+
+    let page = PdfPage::new(Mm(width_mm), Mm(height_mm), page_contents);
+
+    let mut warnings = Vec::new();
+    let pdf_bytes = doc
+        .with_pages(vec![page])
+        .save(&PdfSaveOptions::default(), &mut warnings);
+
+    fs::write(dst, &pdf_bytes)
         .with_context(|| format!("failed to write {}", dst.display()))?;
     Ok(())
 }
