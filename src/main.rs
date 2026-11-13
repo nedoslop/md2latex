@@ -57,8 +57,7 @@ fn main() -> Result<()> {
     println!("LaTeX saved: {}", tex_path.display());
 
     if cfg.project.compile_pdf {
-        let shell_escape = cfg.code.enabled
-            && cfg.code.engine.eq_ignore_ascii_case("minted");
+        let shell_escape = cfg.code.enabled && cfg.code.engine.eq_ignore_ascii_case("minted");
         compile_pdf(&tex_path, shell_escape)?;
     }
 
