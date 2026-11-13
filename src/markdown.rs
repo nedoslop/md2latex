@@ -27,6 +27,7 @@ pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     options.extension.strikethrough = true;
     options.extension.tasklist = true;
     options.extension.math_dollars = true;
+    options.extension.superscript = true;
 
     let root = parse_document(&arena, md, &options);
     let mut out = String::new();
@@ -517,6 +518,11 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
             }
             NodeValue::SoftBreak | NodeValue::LineBreak => out.push(' '),
             NodeValue::Image(link) => render_image(child, &link, out, cfg)?,
+            NodeValue::Superscript => {
+                out.push_str("\\textsuperscript{");
+                render_inline(child, out, cfg)?;
+                out.push('}');
+            }
             _ => render_inline(child, out, cfg)?,
         }
     }
@@ -842,6 +848,8 @@ fn escape_latex(s: &str) -> String {
             '{' => out.push_str("\\{"),
             '}' => out.push_str("\\}"),
             '\\' => out.push_str("\\textbackslash{}"),
+            '^' => out.push_str("\\textasciicircum{}"), // <-- ДОБАВЛЕНО
+            '~' => out.push_str("\\textasciitilde{}"),  // <-- ДОБАВЛЕНО
             _ => out.push(ch),
         }
     }
