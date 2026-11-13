@@ -4,6 +4,7 @@
 {%- set university_quoted = extra.university_quoted | default(value="«" ~ university ~ "»") -%}
 {%- set institute_label = extra.institute_label | default(value="институт") -%}
 {%- set department_label = extra.department_label | default(value="кафедра") -%}
+{%- set doc_kind        = extra.doc_kind        | default(value="КУРСОВАЯ РАБОТА") -%}
 {%- set topic_label     = extra.topic_label     | default(value="тема проекта (работы)") -%}
 {%- set supervisor_label = extra.supervisor_label | default(value="Руководитель") -%}
 {%- set student_label   = extra.student_label   | default(value="Студент") -%}

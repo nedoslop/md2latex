@@ -11,7 +11,6 @@ use comrak::options::Options;
 use comrak::{parse_document, Arena};
 use regex::Regex;
 
-/// Rendering context: which kind of section we are currently in.
 #[derive(Clone, Copy, PartialEq)]
 enum Ctx {
     Ordinary,
@@ -20,7 +19,6 @@ enum Ctx {
     Appendix,
 }
 
-/// Table caption parsed from a `#tbl:` marker paragraph.
 struct PendingTableCaption {
     label: Option<String>,
     caption: String,
@@ -33,7 +31,6 @@ pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let mut options = Options::default();
     options.extension.table = true;
     options.extension.footnotes = true;
-    // Built-in strikethrough is disabled: `~` and `~~` are handled by hand.
     options.extension.strikethrough = false;
     options.extension.tasklist = true;
     options.extension.math_dollars = true;
@@ -75,7 +72,6 @@ fn render_node<'a>(
 ) -> Result<()> {
     let value = node.data.borrow().value.clone();
 
-    // A pending table caption is only valid directly before a table.
     if !matches!(value, NodeValue::Table(_)) {
         if let Some(pt) = pending.take() {
             out.push_str(&escape_latex(&pt.caption));
@@ -226,7 +222,6 @@ fn render_node<'a>(
                 return Ok(());
             }
 
-            // Lone display-math paragraph -> equation environment.
             let children: Vec<_> = node.children().collect();
             if children.len() == 1 {
                 if let NodeValue::Math(m) = &children[0].data.borrow().value {
@@ -308,11 +303,6 @@ fn render_node<'a>(
     Ok(())
 }
 
-/// Renders a fenced code block, optionally with syntax highlighting.
-///
-/// * `cfg.code.enabled == false` → plain `verbatim`.
-/// * `cfg.code.engine == "minted"` → `minted` environment.
-/// * otherwise → `listings` environment.
 fn render_code_block(code: &NodeCodeBlock, out: &mut String, cfg: &Config) {
     let literal = code.literal.trim_end();
     let lang = code.info.split_whitespace().next().unwrap_or("").trim();
@@ -347,9 +337,6 @@ fn render_code_block(code: &NodeCodeBlock, out: &mut String, cfg: &Config) {
     }
 }
 
-/// Maps a Markdown language tag to a `listings` language name.
-/// Returns an empty string if no mapping is known — the block will then
-/// be rendered without a `language=` option (still framed/typed).
 fn map_listings_lang(lang: &str) -> String {
     match lang.to_lowercase().as_str() {
         "c" => "C".into(),
@@ -373,9 +360,6 @@ fn map_listings_lang(lang: &str) -> String {
     }
 }
 
-/// Maps a Markdown language tag to a Pygments/minted lexer name.
-/// Passes through unknown names — Pygments resolves many more than we can
-/// list here, so this only fixes common short aliases.
 fn map_minted_lang(lang: &str) -> String {
     match lang.to_lowercase().as_str() {
         "" => "text".into(),
@@ -454,8 +438,6 @@ fn render_list<'a>(
     Ok(())
 }
 
-/// `true` if `text` matches one of the structural headings (or the
-/// appendix prefix with a designator).
 fn is_structural(text: &str, cfg: &Config) -> bool {
     let t = text.trim().to_uppercase();
     let appendix_upper = cfg.style.appendix_prefix.trim().to_uppercase();
@@ -482,8 +464,12 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
         to_title_case_if_upper(text)
     };
 
-    // "Main part" is a silent switch back to numbered sub-sections.
-    if display.trim().to_uppercase() == cfg.style.main_part_heading.trim().to_uppercase() {
+    // Silent main part: page break already emitted by the H1 handler, but
+    // do not print a visible heading. Toggle off via `main_part_silent = false`
+    // in a profile that wants the heading displayed.
+    if cfg.style.main_part_silent
+        && display.trim().to_uppercase() == cfg.style.main_part_heading.trim().to_uppercase()
+    {
         return Ok(());
     }
 
@@ -614,7 +600,6 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
     Ok(())
 }
 
-/// Handles text nodes: protects URLs first, then parses `~`/`~~`.
 fn render_text_node(text: &str) -> String {
     let normalized = normalize_dashes(text);
     let re = Regex::new(r"https?://[^\s\)\]\}]+").unwrap();
@@ -630,7 +615,6 @@ fn render_text_node(text: &str) -> String {
     out
 }
 
-/// Parses `~~text~~` as strikethrough, `~text~` as subscript.
 fn parse_tildes(text: &str) -> String {
     let mut result = String::new();
     let mut remaining = text;
@@ -806,7 +790,6 @@ fn render_table<'a>(
     };
 
     if breakable {
-        // ============ BREAKABLE MODE (xltabular) ============
         if new_page {
             out.push_str("\\clearpage\n");
         }
@@ -843,20 +826,15 @@ fn render_table<'a>(
             .map(|r| r.iter().map(|c| format!("\\textbf{{{}}}", c)).collect())
             .unwrap_or_default();
 
-        // Header on the first page.
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
 
-        // Header on subsequent pages.
         out.push_str("  \\hline\n  ");
         out.push_str(&bold.join(" & "));
         out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
 
-        // Footer on intermediate pages.
         out.push_str("  \\endfoot\n");
-
-        // Footer on the last page.
         out.push_str("  \\endlastfoot\n");
 
         let data_rows: Vec<_> = rows.iter().skip(1).collect();
@@ -878,7 +856,6 @@ fn render_table<'a>(
 
         out.push_str("  \\end{xltabular}\n  }\n\n");
     } else {
-        // ============ NON-BREAKABLE MODE (tabularx) ============
         out.push_str("\\begin{table}[H]\n  \\centering\n");
         if cfg.style.table_caption_above {
             if !caption_latex.is_empty() {
@@ -940,8 +917,6 @@ fn strip_heading_number(text: &str) -> String {
     re.replace(text, "").trim().to_string()
 }
 
-/// Returns `s` as-is unless it is ALL-CAPS, in which case it is converted
-/// to sentence case (first letter uppercase, rest lowercase).
 fn to_title_case_if_upper(s: &str) -> String {
     let trimmed = s.trim();
     if trimmed.is_empty() {

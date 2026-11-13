@@ -1,177 +1,45 @@
-[project]
-# Informational label only — templates are selected by explicit paths
-# under [templates]. This field is shown in the build log and can be
-# freely changed without affecting template selection.
-doc_type = "course_work"
-input = "examples/input.md"
-output_dir = "out"
-compile_pdf = true
-bib_file = ""
-
-[style]
-# ---- fonts ----
-font = "Times New Roman"
-font_fallback = "TeX Gyre Termes"
-font_size = "14pt"
-main_font = "Times New Roman"
-mono_font = "Courier New"
-
-# ---- page geometry ----
-margin_left = "30mm"
-margin_right = "10mm"
-margin_top = "20mm"
-margin_bottom = "20mm"
-
-# ---- paragraphs ----
-paragraph_indent = "12.5mm"
-line_spacing = "onehalf"
-numbering = "within_section"
-
-# ---- section headings ----
-section_align = "raggedright"
-section_bold = true
-section_uppercase = false
-
-# ---- captions ----
-caption_font_size = "14pt"
-table_font_size   = "12pt"
-
-# ---- structural headings & figures/tables ----
-structural_heading_uppercase = true
-figure_caption_below = true
-table_caption_above  = true
-default_figure_width = "0.8"
-
-# ---- polyglossia languages ----
-language       = "russian"
-other_language = "english"
-
-# ---- localized structural headings ----
-# These supplement `bibliography_heading`, `appendix_prefix`, and
-# `main_part_heading` below. To localize the converter without touching
-# the Rust code, edit this list.
-extra_structural_headings = [
-    "ВВЕДЕНИЕ",
-    "ЗАКЛЮЧЕНИЕ",
-    "СОДЕРЖАНИЕ",
-    "РЕФЕРАТ",
-    "АННОТАЦИЯ",
-    "СПИСОК СОКРАЩЕНИЙ",
-]
-
-appendix_prefix         = "ПРИЛОЖЕНИЕ"
-appendix_default_letter = "А"
-main_part_heading       = "ОСНОВНАЯ ЧАСТЬ"
-bibliography_heading    = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
-
-# ---- localized labels used by the converter ----
-[labels]
-table_continued = "Продолжение таблицы"
-table_ended     = "Окончание таблицы"
-figure_name     = "Рисунок"
-table_name      = "Таблица"
-contents_name   = "СОДЕРЖАНИЕ"
-bibliography_name = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
-
-[lists]
-itemize_label = "-"
-enumerate_label = "\\arabic*)"
-bibliography_label = "\\arabic*."
-
-[toc]
-clickable_dots = true
-
-[line_breaking]
-sloppy = true
-hyphen_penalty = 50
-exhyphen_penalty = 50
-emergencystretch = "2em"
-tolerance = 9999
-hbadness = 10000
-
 # ─────────────────────────────────────────────────────────────────────────
-# [code] — fenced code block syntax highlighting.
+# Minimal user configuration. Institution-wide defaults live in the
+# profile (`profiles/sibfu/profile.toml`); this file only selects the
+# profile, the document type, and supplies per-document title-page data.
 #
-# enabled = false  → plain `verbatim`, no package loaded.
-# engine  = "listings"  (default) — no external deps, common languages built in;
-#                        Rust / Go / JavaScript definitions are added by the
-#                        base template.
-# engine  = "minted"            — uses Pygments; requires Python + Pygments
-#                        and -shell-escape for xelatex (the build system
-#                        adds the flag automatically). Best Unicode / language
-#                        coverage.
+# Any field from the profile's [style] / [labels] / [lists] / [extra] /
+# ... can be overridden here — the user TOML is deep-merged on top of the
+# profile TOML.
 # ─────────────────────────────────────────────────────────────────────────
-[code]
-enabled = true
-engine = "listings"
-font_size = "12pt"
-line_numbers = false
-frame = false
 
-[templates]
-# `dir` is the base directory for relative `base` / `title` paths. A path
-# that is absolute (or starts with `..`) is used as-is. Both `base` and
-# `title` are plain file paths — no document-type mapping is involved.
-# To use another institution's title page, point `title` at a different
-# `.tex.tera` file. No Rust changes required.
-dir   = "templates"
-base  = "base.tex.tera"
-title = "title_course.tex.tera"
+[project]
+profile     = "profiles/sibfu"
+doc_type    = "course_work"
+input       = "examples/input.md"
+output_dir  = "out"
+compile_pdf = true
+bib_file    = ""
 
-[links]
-colored = true
-link_color = "black"
-cite_color = "black"
-url_color = "blue"
-boxed = false
-
-[images]
-interpolate = true
-dpi = 300
-
+# ── Title-page data for this specific document ──────────────────────────
+# Fields not provided here fall back to the template's own defaults
+# (e.g. ministry line, labels) or to the profile's [profile].university.
+# `institute` and `department` are intentionally left blank by default —
+# the title template prints a placeholder rule in that case.
 [title]
-university = "Сибирский федеральный университет"
-institute = "Институт космических и информационных технологий"
-department = "Кафедра систем искусственного интеллекта"
-doc_kind = "КУРСОВАЯ РАБОТА"
-direction_code = "09.03.04"
-direction_name = "Программная инженерия"
-topic = "Разработка конвертера Markdown в LaTeX"
-supervisor = "П. П. Петров"
+institute     = "Институт космических и информационных технологий"
+department    = "Кафедра систем искусственного интеллекта"
+topic         = "Разработка конвертера Markdown в LaTeX"
+supervisor    = "П. П. Петров"
 supervisor_title = ""
-reviewer = ""
-year = "2026"
-city = "Красноярск"
+reviewer      = ""
+year          = "2026"
+city          = "Красноярск"
 
 [[title.students]]
-name = "И. И. Иванов"
-
-[[title.students]]
-group = "ПИ21-01Б"
+group      = "ПИ21-01Б"
 student_id = "987654321"
 
-[bibliography]
-use_biblatex = false
+[[title.students]]
+name       = "И. И. Ветров"
 
-# ─────────────────────────────────────────────────────────────────────────
-# [extra] — free-form override / extension namespace.
-#
-# The whole table is passed to the templates as `extra.*`. Every value
-# below is OPTIONAL: the title template already ships with the SFU
-# defaults (see templates/title_course.tex.tera). Uncomment only what you
-# need to override, or add any new key your custom template expects.
-#
-# Example overrides for a different Russian university:
+# ── Optional per-document overrides ────────────────────────────────────
+# Example: change the SFU ministry line only for this document.
 #
 # [extra]
-# ministry       = "Министерство образования и науки РФ"
-# org_line1      = "Федеральное государственное бюджетное"
-# org_line2      = "образовательное учреждение высшего образования"
-# institute_label = "факультет"
-# supervisor_label = "Научный руководитель"
-#
-# Any custom key is available as `{{ extra.my_key }}` in custom templates:
-#
-# [extra]
-# dean_name = "И. И. Иванов"
-# -->
+# ministry = "Министерство науки и высшего образования РФ"

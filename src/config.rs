@@ -1,31 +1,48 @@
 //! Configuration loading and data model.
 //!
-//! The Rust code itself contains **no** natural-language strings and **no**
-//! institution-specific boilerplate. Everything the converter must know
-//! about (languages, structural headings, caption labels) is supplied via
-//! `[style]` / `[labels]`. Everything that only the title page cares about
-//! (ministry name, organisation lines, signature labels, …) lives inside
-//! the LaTeX template file — see `templates/title_course.tex.tera`.
+//! Configuration is **layered**:
 //!
-//! A free-form `[extra]` table is injected verbatim into the template
-//! context under `extra.*`. Use it to override template-side defaults or
-//! to pass any custom value without extending the Rust data model.
+//! 1. The user's TOML (`md2latex.toml`, passed via `--config`) selects a
+//!    **profile** — a directory containing `profile.toml` plus all LaTeX
+//!    templates for one institution.
+//! 2. `profile.toml` supplies institution-wide defaults: fonts, page
+//!    geometry, structural headings, localized labels, the university
+//!    name, and a `[doc_types]` map from document-type names to title-page
+//!    template paths.
+//! 3. Any field from the user's TOML is deep-merged on top of the profile
+//!    defaults.
 //!
-//! Template selection is **path-based**: the config points directly at the
-//! base and title `.tex.tera` files. There is no code-side mapping from a
-//! "document type" to a template.
+//! Template selection is **path-based**:
+//!   * `[templates].dir` defaults to the profile directory itself; a
+//!     non-empty relative value is resolved against it.
+//!   * `[templates].base` is the main LaTeX template.
+//!   * `[doc_types].<doc_type>` picks the title-page template.
+//!
+//! There is no code-side mapping from a "document type" to a template file
+//! and no institution-specific string baked into Rust — everything lives
+//! in the profile.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Top-level configuration tree loaded from a TOML file.
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub project: Project,
+
+    #[serde(default)]
+    pub profile: Profile,
+
+    #[serde(default)]
+    pub doc_types: HashMap<String, String>,
+
     pub style: Style,
+
+    #[serde(default)]
     pub title: Title,
+
     #[serde(default)]
     pub bibliography: Bibliography,
     #[serde(default)]
@@ -45,31 +62,25 @@ pub struct Config {
     #[serde(default)]
     pub code: Code,
 
-    /// Free-form key/value namespace injected verbatim into the template
-    /// context under `extra.*`.
-    ///
-    /// This is the escape hatch for anything the typed schema does not
-    /// cover: institution-specific boilerplate (`extra.ministry`,
-    /// `extra.org_line1`, …), per-document custom fields, ad-hoc flags,
-    /// etc. Templates read them as `{{ extra.my_key | default(value="…") }}`.
-    ///
-    /// The whole table is passed through serde_json to Tera unchanged, so
-    /// any TOML value (string, integer, float, bool, array, nested table)
-    /// is available.
     #[serde(default = "default_extra")]
     pub extra: toml::Value,
 }
 
-/// Project-level settings: input file, output directory, build options.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct Profile {
+    pub name: String,
+    pub university: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Project {
-    /// Informational label for the document being built (e.g.
-    /// `"course_work"`, `"master_thesis"`, `"report"`).
-    ///
-    /// It is **not** used to select a template — templates are chosen by
-    /// explicit paths in [`Templates`]. This field exists purely so the
-    /// configuration can record what kind of document is being built.
     pub doc_type: String,
+
+    /// Path to the profile directory (contains `profile.toml`). Relative
+    /// paths are resolved against the directory of the user's config file.
+    /// Kept on the struct after load for logging / diagnostics.
+    pub profile: String,
 
     pub input: String,
     pub output_dir: String,
@@ -79,13 +90,9 @@ pub struct Project {
     pub compile_pdf: bool,
 }
 
-/// Document style settings.
-///
-/// Fields in this struct influence the **converter's** behaviour (parsing,
-/// numbering, heading recognition, language setup). Institution-specific
-/// presentation is the template's responsibility, not the config's.
 #[derive(Debug, Deserialize)]
 pub struct Style {
+    #[serde(default = "default_main_font")]
     pub font: String,
     #[serde(default = "default_font_fallback")]
     pub font_fallback: String,
@@ -111,20 +118,12 @@ pub struct Style {
     #[serde(default = "default_true")]
     pub title_page_fill_empty: bool,
 
-    /// Explicit list of structural (top-level) headings. When non-empty,
-    /// overrides everything derived from `extra_structural_headings` and
-    /// the three special headings below.
     #[serde(default)]
     pub structural_headings: Vec<String>,
 
-    /// Additional structural headings, appended (together with
-    /// `bibliography_heading`, `appendix_prefix`, `main_part_heading`) to
-    /// form the effective structural-headings list.
     #[serde(default)]
     pub extra_structural_headings: Vec<String>,
 
-    /// Subsection headings (H2+) inside structural sections that should
-    /// remain unnumbered (e.g. sub-headings of an introduction).
     #[serde(default)]
     pub structural_headings_unnumbered_subsections: Vec<String>,
 
@@ -165,46 +164,31 @@ pub struct Style {
     #[serde(default = "default_subsection_after_skip")]
     pub subsection_after_skip: String,
 
-    /// Default appendix designator used when an appendix heading contains
-    /// no explicit letter.
     #[serde(default = "default_appendix_default_letter")]
     pub appendix_default_letter: String,
-
-    /// Prefix that identifies an appendix heading (e.g. "APPENDIX").
     #[serde(default = "default_appendix_prefix")]
     pub appendix_prefix: String,
-
-    /// Heading of the "main part" section that is not printed as a title
-    /// but switches back to numbered sub-sections.
     #[serde(default = "default_main_part_heading")]
     pub main_part_heading: String,
 
-    /// Heading of the bibliography section.
+    /// If `true` (default) the `main_part_heading` acts as a silent page
+    /// break: page break is emitted but no visible heading is printed.
+    #[serde(default = "default_true")]
+    pub main_part_silent: bool,
+
     #[serde(default = "default_bibliography_heading")]
     pub bibliography_heading: String,
 
-    /// Main language for polyglossia (e.g. "russian", "english").
     #[serde(default = "default_language")]
     pub language: String,
-
-    /// Secondary language for polyglossia (e.g. "english").
     #[serde(default = "default_other_language")]
     pub other_language: String,
 }
 
-/// Syntax-highlighting settings for fenced code blocks.
-///
-/// When `enabled` is `false`, code blocks are rendered with `verbatim` and
-/// no highlighting package is loaded. When `enabled` is `true` and `engine`
-/// is `"listings"` (default), the bundled `listings` package is used. When
-/// `engine` is `"minted"`, the `minted` package is used instead — this
-/// requires Python + Pygments and that `xelatex` runs with `-shell-escape`
-/// (the build system adds that flag automatically for this engine).
 #[derive(Debug, Deserialize)]
 pub struct Code {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// `"listings"` (default) or `"minted"`.
     #[serde(default = "default_code_engine")]
     pub engine: String,
     #[serde(default = "default_code_font_size")]
@@ -234,12 +218,6 @@ impl Default for Code {
     }
 }
 
-// ── Localizable labels used by the converter ──────────────────────────────
-//
-// These are the names the **converter** injects into LaTeX (`\figurename`,
-// `\tablename`, `\contentsname`, and the "continued / end of table"
-// prefixes). They are language-level, not institution-level, and so belong
-// to the config rather than to a template.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Labels {
     #[serde(default = "default_table_continued")]
@@ -364,18 +342,11 @@ fn default_other_language() -> String {
     "russian".into()
 }
 
-/// Default for the `[extra]` table: an empty TOML table, so `extra.*`
-/// resolves to "undefined" in Tera and `| default(...)` works as expected.
 fn default_extra() -> toml::Value {
     toml::Value::Table(toml::Table::new())
 }
 
 impl Style {
-    /// Effective list of structural (top-level) headings.
-    ///
-    /// * If `structural_headings` is explicitly set, it is returned as-is.
-    /// * Otherwise the list is composed from `extra_structural_headings`
-    ///   plus the three special headings.
     pub fn structural_list(&self) -> Vec<String> {
         if !self.structural_headings.is_empty() {
             return self.structural_headings.clone();
@@ -388,8 +359,6 @@ impl Style {
         list
     }
 
-    /// Returns `true` if `heading` is an unnumbered subsection of a
-    /// structural section (or an appendix heading).
     pub fn is_unnumbered_subsection(&self, heading: &str) -> bool {
         let t = heading.trim().to_uppercase();
 
@@ -416,25 +385,16 @@ impl Style {
     }
 }
 
-/// One student on the title page.
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+#[serde(default)]
 pub struct Student {
-    #[serde(default)]
     pub name: String,
-    #[serde(default)]
     pub group: String,
-    #[serde(default)]
     pub student_id: String,
 }
 
-/// Domain data shown on the title page.
-///
-/// Only universal "thesis title page" concepts live here: who, what, where,
-/// when. Institution-specific presentation (which ministry line to print,
-/// what labels to use, how the layout is structured) is not modelled here —
-/// that belongs to the title-page template, optionally overridden via
-/// `[extra]`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Title {
     pub university: String,
     pub institute: String,
@@ -444,18 +404,13 @@ pub struct Title {
     pub direction_name: String,
     pub topic: String,
 
-    #[serde(default)]
     pub student: String,
-    #[serde(default)]
     pub student_id: String,
-    #[serde(default)]
     pub group: String,
-    #[serde(default)]
     pub students: Vec<Student>,
 
     pub supervisor: String,
     pub supervisor_title: String,
-    #[serde(default)]
     pub reviewer: String,
     pub year: String,
     pub city: String,
@@ -551,30 +506,21 @@ impl Default for Lists {
     }
 }
 
-/// Template file locations.
-///
-/// Both `base` and `title` are **file paths**, not document-type keys. A
-/// relative path is resolved against `dir`; an absolute path (or one
-/// starting with `..`) is used as-is via `Path::join`. The code is
-/// completely agnostic of any particular institution's template layout.
+/// Template file locations. An empty `dir` means "the profile directory
+/// itself"; a non-empty relative value is resolved against the profile
+/// directory; an absolute value is used verbatim.
 #[derive(Debug, Deserialize)]
 pub struct Templates {
     #[serde(default = "default_templates_dir")]
     pub dir: String,
-
-    /// Path to the main LaTeX template (relative to `dir` unless absolute).
     #[serde(default = "default_base_template")]
     pub base: String,
-
-    /// Path to the title-page LaTeX template (relative to `dir` unless
-    /// absolute). This is the single source of truth for title-page
-    /// rendering — there is no fallback mapping by `doc_type`.
     #[serde(default = "default_title_template")]
     pub title: String,
 }
 
 fn default_templates_dir() -> String {
-    "templates".into()
+    String::new()
 }
 fn default_base_template() -> String {
     "base.tex.tera".into()
@@ -600,8 +546,6 @@ impl Templates {
     pub fn base_path(&self) -> PathBuf {
         self.dir_path().join(&self.base)
     }
-    /// Full path to the title-page template. Absolute `title` values win
-    /// over `dir`, matching `PathBuf::join` semantics.
     pub fn title_path(&self) -> PathBuf {
         self.dir_path().join(&self.title)
     }
@@ -665,20 +609,80 @@ impl Default for LineBreaking {
 }
 
 impl Config {
-    /// Loads a config from disk and resolves a relative `templates.dir`
-    /// against the config file's location.
+    /// Loads the user's config, finds the profile, merges the two (user
+    /// on top of profile), and resolves template paths relative to the
+    /// profile directory.
     pub fn from_file(path: &Path) -> Result<Self> {
         let raw = fs::read_to_string(path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        let mut cfg: Config = toml::from_str(&raw).with_context(|| "invalid TOML configuration")?;
+        let user_toml: toml::Value = toml::from_str(&raw)
+            .with_context(|| format!("invalid TOML in {}", path.display()))?;
 
         let cfg_dir = path.parent().unwrap_or_else(|| Path::new("."));
-        if !Path::new(&cfg.templates.dir).is_absolute() {
-            cfg.templates.dir = cfg_dir
+
+        // ── 1. Locate the profile directory ─────────────────────────────
+        let profile_rel = user_toml
+            .get("project")
+            .and_then(|p| p.get("profile"))
+            .and_then(|v| v.as_str())
+            .context("missing required [project].profile (path to profile directory)")?;
+
+        let profile_dir = if Path::new(profile_rel).is_absolute() {
+            PathBuf::from(profile_rel)
+        } else {
+            cfg_dir.join(profile_rel)
+        };
+
+        // ── 2. Load profile.toml ────────────────────────────────────────
+        let profile_path = profile_dir.join("profile.toml");
+        let profile_raw = fs::read_to_string(&profile_path)
+            .with_context(|| format!("failed to read profile: {}", profile_path.display()))?;
+        let mut merged: toml::Value = toml::from_str(&profile_raw)
+            .with_context(|| format!("invalid TOML in {}", profile_path.display()))?;
+
+        // ── 3. Deep-merge user config over profile ──────────────────────
+        merge_toml(&mut merged, user_toml);
+
+        let mut cfg: Config = merged
+            .try_into()
+            .context("invalid merged configuration (profile + user)")?;
+
+        // ── 4. Fill the university from the profile if the user didn't ──
+        if cfg.title.university.trim().is_empty() {
+            cfg.title.university = cfg.profile.university.clone();
+        }
+
+        // ── 5. Resolve `templates.dir` against the profile directory ────
+        //     empty / "." → profile root itself (no ugly `./` component).
+        if cfg.templates.dir.is_empty() || cfg.templates.dir == "." {
+            cfg.templates.dir = profile_dir.to_string_lossy().into_owned();
+        } else if !Path::new(&cfg.templates.dir).is_absolute() {
+            cfg.templates.dir = profile_dir
                 .join(&cfg.templates.dir)
                 .to_string_lossy()
                 .into_owned();
         }
+
+        // ── 6. Resolve title template from [doc_types] ──────────────────
+        if let Some(rel) = cfg.doc_types.get(&cfg.project.doc_type).cloned() {
+            cfg.templates.title = rel;
+        }
+
         Ok(cfg)
+    }
+}
+
+/// Deep merge `over` into `base`. Tables are merged recursively; every
+/// other value from `over` replaces the one in `base`.
+fn merge_toml(base: &mut toml::Value, over: toml::Value) {
+    if let (toml::Value::Table(bt), toml::Value::Table(ot)) = (base, over) {
+        for (k, v) in ot {
+            match bt.get_mut(&k) {
+                Some(existing) => merge_toml(existing, v),
+                None => {
+                    bt.insert(k, v);
+                }
+            }
+        }
     }
 }

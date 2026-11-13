@@ -25,6 +25,9 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg = config::Config::from_file(&cli.config).context("failed to load configuration")?;
 
+    if !cfg.project.profile.is_empty() {
+        println!("Profile:       {}", cfg.project.profile);
+    }
     if !cfg.project.doc_type.is_empty() {
         println!("Document type: {}", cfg.project.doc_type);
     }
@@ -54,7 +57,7 @@ fn main() -> Result<()> {
     let tex_path = out_dir.join("main.tex");
     fs::write(&tex_path, &full_latex)
         .with_context(|| format!("failed to write {}", tex_path.display()))?;
-    println!("LaTeX saved: {}", tex_path.display());
+    println!("LaTeX saved:   {}", tex_path.display());
 
     if cfg.project.compile_pdf {
         let shell_escape = cfg.code.enabled && cfg.code.engine.eq_ignore_ascii_case("minted");
@@ -92,7 +95,7 @@ fn compile_pdf(tex_path: &Path, shell_escape: bool) -> Result<()> {
     // ToC is long.
     run_latex(dir, &args)?;
 
-    println!("PDF ready: {}", dir.join("main.pdf").display());
+    println!("PDF ready:     {}", dir.join("main.pdf").display());
     Ok(())
 }
 

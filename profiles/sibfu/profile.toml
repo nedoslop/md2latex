@@ -1,0 +1,147 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Profile: SIBFU (Сибирский федеральный университет)
+# Based on СТУ 7.5–07–2021.
+#
+# Everything institution-wide lives here. To create a profile for another
+# university, copy this directory, edit the values below, and point
+# `[project].profile` in the user's config at the new directory. No Rust
+# code changes are required.
+#
+# Overriding: the user's md2latex.toml is deep-merged on top of this
+# file, so any value here can be overridden per-document.
+# ─────────────────────────────────────────────────────────────────────────
+
+# ── Institution identity ────────────────────────────────────────────────
+[profile]
+name       = "sibfu"
+university = "Сибирский федеральный университет"
+# The «»-quoted form is computed by the title template from `university`.
+# To override, add [extra].university_quoted = "..." in your user config.
+
+# ── Template layout ─────────────────────────────────────────────────────
+# `dir` is resolved relative to this profile directory. Empty (or ".")
+# means "the profile directory itself". Leave it out to use the default.
+# `base` and all `[doc_types]` paths are resolved relative to `dir`.
+[templates]
+dir  = "."
+base = "base.tex.tera"
+
+# ── Document types → title-page templates ──────────────────────────────
+# Selected via `[project].doc_type` in the user's config.
+[doc_types]
+course_work = "course_work.tex.tera"
+# diploma    = "diploma.tex.tera"
+# practice   = "practice.tex.tera"
+# essay      = "essay.tex.tera"
+
+# ── Style defaults ──────────────────────────────────────────────────────
+[style]
+font          = "Times New Roman"
+font_fallback = "TeX Gyre Termes"
+font_size     = "14pt"
+main_font     = "Times New Roman"
+mono_font     = "Courier New"
+
+margin_left   = "30mm"
+margin_right  = "10mm"
+margin_top    = "20mm"
+margin_bottom = "20mm"
+
+paragraph_indent = "12.5mm"
+line_spacing     = "onehalf"
+numbering        = "within_section"
+
+section_align     = "raggedright"
+section_bold      = true
+section_uppercase = false
+
+caption_font_size = "14pt"
+table_font_size   = "12pt"
+
+structural_heading_uppercase = true
+figure_caption_below         = true
+table_caption_above          = true
+default_figure_width         = "0.8"
+
+language       = "russian"
+other_language = "english"
+
+# Localized structural (H1) headings.
+extra_structural_headings = [
+    "ВВЕДЕНИЕ",
+    "ЗАКЛЮЧЕНИЕ",
+    "СОДЕРЖАНИЕ",
+    "РЕФЕРАТ",
+    "АННОТАЦИЯ",
+    "СПИСОК СОКРАЩЕНИЙ",
+]
+
+appendix_prefix         = "ПРИЛОЖЕНИЕ"
+appendix_default_letter = "А"
+main_part_heading       = "ОСНОВНАЯ ЧАСТЬ"
+# If false, "ОСНОВНАЯ ЧАСТЬ" is rendered as a visible structural heading.
+# SFU style: silent switch to numbered sections.
+main_part_silent        = true
+bibliography_heading    = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
+
+# ── Localized labels used by the converter ─────────────────────────────
+[labels]
+table_continued   = "Продолжение таблицы"
+table_ended       = "Окончание таблицы"
+figure_name       = "Рисунок"
+table_name        = "Таблица"
+contents_name     = "СОДЕРЖАНИЕ"
+bibliography_name = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
+
+# ── Lists ──────────────────────────────────────────────────────────────
+[lists]
+itemize_label      = "-"
+enumerate_label    = "\\arabic*)"
+bibliography_label = "\\arabic*."
+
+[toc]
+clickable_dots = true
+
+[line_breaking]
+sloppy           = true
+hyphen_penalty   = 50
+exhyphen_penalty = 50
+emergencystretch = "2em"
+tolerance        = 9999
+hbadness         = 10000
+
+# ── Code highlighting ──────────────────────────────────────────────────
+[code]
+enabled      = true
+engine       = "listings"   # or "minted"
+font_size    = "12pt"
+line_numbers = false
+frame        = false
+
+[links]
+colored    = true
+link_color = "black"
+cite_color = "black"
+url_color  = "blue"
+boxed      = false
+
+[images]
+interpolate = true
+dpi         = 300
+
+[bibliography]
+use_biblatex = false
+
+# ── Institution-specific template defaults ─────────────────────────────
+# These are injected into every template as `extra.*`. Title templates
+# use `extra.ministry | default(value="…")` so overrides are optional.
+# Uncomment to override the SFU defaults baked into course_work.tex.tera.
+#
+# [extra]
+# ministry         = "Министерство науки и высшего образования РФ"
+# org_line1        = "Федеральное государственное автономное"
+# org_line2        = "образовательное учреждение высшего образования"
+# institute_label  = "институт"
+# department_label = "кафедра"
+# supervisor_label = "Руководитель"
+# student_label    = "Студент"
