@@ -95,6 +95,10 @@ fn main() -> Result<()> {
         cfg.images.dpi,
     )
     .context("image preparation failed")?;
+
+    // Copy the .bib file next to the generated .tex so biber can find it.
+    copy_bibliography(&cfg, &md_path, &out_dir).context("bibliography copy failed")?;
+
     let images_time = t.elapsed();
 
     let t = Instant::now();
@@ -137,11 +141,55 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Prints the summary table with per-stage timings.
-///
-/// Uses `comfy-table` so that ANSI colours in the value cells don't break
-/// column alignment (which is what a naive `{:>10}` + `console::style`
-/// combination does).
+/// Copies the biblatex `.bib` file into `out_dir`, preserving relative
+/// subpaths so the `\addbibresource{...}` path still resolves.
+fn copy_bibliography(cfg: &config::Config, md_path: &Path, out_dir: &Path) -> Result<()> {
+    if !cfg.bibliography.use_biblatex {
+        return Ok(());
+    }
+
+    let rel = cfg
+        .project
+        .bib_file
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("refs.bib");
+
+    let bib_src = if Path::new(rel).is_absolute() {
+        PathBuf::from(rel)
+    } else {
+        md_path.parent().unwrap_or_else(|| Path::new(".")).join(rel)
+    };
+
+    if !bib_src.is_file() {
+        log::warn(&format!(
+            "bibliography file not found: {} (biber will fail)",
+            bib_src.display()
+        ));
+        return Ok(());
+    }
+
+    let bib_dst = out_dir.join(rel);
+    if let Some(parent) = bib_dst.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::copy(&bib_src, &bib_dst).with_context(|| {
+        format!(
+            "failed to copy {} -> {}",
+            bib_src.display(),
+            bib_dst.display()
+        )
+    })?;
+    log::info(&format!(
+        "bibliography: {} -> {}",
+        bib_src.display(),
+        bib_dst.display()
+    ));
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn print_timings(
     cfg: &config::Config,
@@ -153,7 +201,6 @@ fn print_timings(
     pdf_time: Option<Duration>,
     total: Duration,
 ) {
-    // (label, duration) rows.
     let mut rows: Vec<(String, Duration)> = vec![
         ("Config".to_string(), config_time),
         ("Images".to_string(), images_time),
@@ -215,9 +262,6 @@ fn fmt_duration(d: Duration) -> String {
 
 /// Runs `xelatex` (and `biber` if needed), then `xelatex` twice more to
 /// stabilise the table of contents and cross-references.
-///
-/// Unless `verbose` is set, the tools run quietly: their stdout/stderr
-/// is captured and only dumped to the console if they fail.
 fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) -> Result<()> {
     let dir = tex_path.parent().unwrap();
 
@@ -251,12 +295,6 @@ fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) -> Result<()>
     Ok(())
 }
 
-/// Runs an external tool.
-///
-/// * `verbose = true`  — stdout/stderr are inherited (stream live).
-/// * `verbose = false` — output is captured; on failure it's replayed to
-///   stderr so the user still sees the real TeX error, not just a bare
-///   "process exited with 1".
 fn run_tool(name: &str, args: &[&str], dir: &Path, verbose: bool) -> Result<()> {
     if verbose {
         let status = Command::new(name)
@@ -280,9 +318,6 @@ fn run_tool(name: &str, args: &[&str], dir: &Path, verbose: bool) -> Result<()> 
         return Ok(());
     }
 
-    // Failure: replay the captured log on stderr so the user can actually
-    // see what went wrong. xelatex writes errors to stdout; biber mostly
-    // to stderr — dump whatever exists.
     let mut wrote = false;
     if !output.stdout.is_empty() {
         log::error(&format!("─── {} stdout ───", name));

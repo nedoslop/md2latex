@@ -943,4 +943,3 @@ fn merge_toml(base: &mut toml::Value, over: toml::Value) {
         }
     }
 }
-

@@ -15,35 +15,36 @@
 //!   data). The `^^` cell itself becomes empty in the output; the
 //!   content lives in the *starting* cell of the multirow.
 //!
-//! ```markdown
-//! | H1 | H2 | H3 |
-//! |----|----|----|
-//! | a  | << | c  |
-//! | ^^ | << | d  |
-//! | e  | f  | ^^ |
-//! ```
+//! ## Footnotes
 //!
-//! LaTeX side:
+//! Standard GFM footnotes (`[^name]` + `[^name]: text`) are supported.
+//! On first reference we emit `\footnote{...}`; later references to the
+//! same footnote emit `\footnotemark[N]` pointing at the number LaTeX
+//! assigned to the first occurrence.
 //!
-//! * merged **columns** → `\multicolumn{N}{<spec>}{...}` where `<spec>`
-//!   is a tabularx-compatible `X` column with `\hsize` inflated so the
-//!   merged cell occupies the same total width as the columns it
-//!   replaced;
-//! * merged **rows** → `\multirow{N}{*}{...}` (the `*` form uses the
-//!   content's natural width and respects `\multirowsetup`);
-//! * horizontal rules that would cut through a multirow are emitted as
-//!   `\cline{a-b}` instead of `\hline`, skipping the affected columns.
+//! ## Equation labels
 //!
-//! Requires `\usepackage{multirow}` (and preferably
-//! `\renewcommand{\multirowsetup}{\centering}`) in the preamble.
+//! A standalone paragraph `#eq:name` immediately before a `$$...$$`
+//! display equation attaches `\label{eq:name}` to that equation. The
+//! label is dropped (with a warning) if the next block isn't display
+//! math.
 //!
-//! Header rowspans are not supported — a warning is emitted if the user
-//! tries; use body rows to simulate multi-row headers.
+//! ## Code block labels and captions
+//!
+//! Info-string syntax: ```` ```<lang> #lst:name Caption text ````.
+//! `#lst:name` becomes `label=lst:name`; the remaining tokens (if any)
+//! become the caption. Works for both `listings` and `minted` engines.
+//!
+//! ## Table column alignment
+//!
+//! GFM column alignment (`:---`, `:---:`, `---:`) is honoured via the
+//! `L`, `C`, `R` column types defined in `base.tex.tera`. Merged cells
+//! (`\multicolumn`) inherit the alignment of their starting column.
 
 use crate::config::Config;
 use crate::log;
 use anyhow::Result;
-use comrak::nodes::{AstNode, NodeCodeBlock, NodeLink, NodeValue};
+use comrak::nodes::{AstNode, NodeCodeBlock, NodeLink, NodeValue, TableAlignment};
 use comrak::options::Options;
 use comrak::{parse_document, Arena};
 use regex::Regex;
@@ -70,12 +71,42 @@ struct Cell {
     colspan: usize,
     rowspan: usize,
     content: String,
-    /// True for `^^` continuation cells: emit an empty cell, don't touch
-    /// content.
+    /// True for `^^` continuation cells: emit an empty cell.
     phantom: bool,
+    /// Alignment inherited from the starting physical column.
+    align: TableAlignment,
 }
 
 type Row = Vec<Cell>;
+
+/// Mutable state carried through the rendering pass.
+struct RenderState {
+    ctx: Ctx,
+    pending_table: Option<PendingTableCaption>,
+    pending_equation_label: Option<String>,
+    skip_next_section_pagebreak: bool,
+    in_bibliography: bool,
+    /// Rendered content of each footnote definition, keyed by name.
+    footnotes: HashMap<String, String>,
+    /// First-use LaTeX number for each footnote name.
+    footnote_numbers: HashMap<String, usize>,
+    footnote_counter: usize,
+}
+
+impl RenderState {
+    fn new(footnotes: HashMap<String, String>) -> Self {
+        Self {
+            ctx: Ctx::Ordinary,
+            pending_table: None,
+            pending_equation_label: None,
+            skip_next_section_pagebreak: false,
+            in_bibliography: false,
+            footnotes,
+            footnote_numbers: HashMap::new(),
+            footnote_counter: 0,
+        }
+    }
+}
 
 pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let arena = Arena::new();
@@ -88,43 +119,80 @@ pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     options.extension.superscript = true;
 
     let root = parse_document(&arena, md, &options);
+
+    let footnotes = collect_footnotes(root, cfg)?;
+    let mut state = RenderState::new(footnotes);
     let mut out = String::new();
-    let mut ctx = Ctx::Ordinary;
-    let mut pending: Option<PendingTableCaption> = None;
-    let mut skip_next_section_pagebreak = false;
-    let mut in_bibliography = false;
 
     for node in root.children() {
-        render_node(
-            node,
-            &mut out,
-            cfg,
-            &mut ctx,
-            &mut pending,
-            &mut skip_next_section_pagebreak,
-            &mut in_bibliography,
-        )?;
+        render_node(node, &mut out, cfg, &mut state)?;
     }
-    if let Some(pt) = pending.take() {
+    if let Some(pt) = state.pending_table.take() {
         out.push_str(&escape_latex(&pt.caption));
         out.push_str("\n\n");
     }
     Ok(out)
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Footnotes
+// ─────────────────────────────────────────────────────────────────────────
+
+fn collect_footnotes<'a>(root: &'a AstNode<'a>, cfg: &Config) -> Result<HashMap<String, String>> {
+    let mut map = HashMap::new();
+    for node in root.descendants() {
+        if let NodeValue::FootnoteDefinition(def) = &node.data.borrow().value {
+            let name = def.name.clone();
+            let content = render_footnote_content(node, cfg)?;
+            map.insert(name, content);
+        }
+    }
+    Ok(map)
+}
+
+/// Renders the content of a footnote definition into inline LaTeX.
+/// Only paragraph children are supported; complex block content is
+/// skipped with a warning.
+fn render_footnote_content<'a>(node: &'a AstNode<'a>, cfg: &Config) -> Result<String> {
+    let mut out = String::new();
+    let mut local = RenderState::new(HashMap::new());
+    for child in node.children() {
+        let v = child.data.borrow().value.clone();
+        match v {
+            NodeValue::Paragraph => {
+                if !out.is_empty() {
+                    out.push(' ');
+                }
+                let mut p = String::new();
+                render_inline(child, &mut p, cfg, &mut local)?;
+                out.push_str(p.trim());
+            }
+            _ => {
+                log::warn("footnote with non-paragraph content: only inline content is rendered");
+            }
+        }
+    }
+    Ok(out.trim().to_string())
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AST walker
+// ─────────────────────────────────────────────────────────────────────────
+
 fn render_node<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
     cfg: &Config,
-    ctx: &mut Ctx,
-    pending: &mut Option<PendingTableCaption>,
-    skip_next_section_pagebreak: &mut bool,
-    in_bibliography: &mut bool,
+    state: &mut RenderState,
 ) -> Result<()> {
     let value = node.data.borrow().value.clone();
 
-    if !matches!(value, NodeValue::Table(_)) {
-        if let Some(pt) = pending.take() {
+    // Any non-table, non-footnote-def block flushes a pending table caption.
+    if !matches!(
+        value,
+        NodeValue::Table(_) | NodeValue::FootnoteDefinition(_)
+    ) {
+        if let Some(pt) = state.pending_table.take() {
             out.push_str(&escape_latex(&pt.caption));
             out.push_str("\n\n");
         }
@@ -132,233 +200,304 @@ fn render_node<'a>(
 
     match value {
         NodeValue::Heading(h) => {
-            let raw_text = extract_text(node);
-            let clean = strip_heading_number(&raw_text)
-                .trim_end_matches('.')
-                .to_string();
-
-            if h.level == 1 {
-                if is_structural(&clean, cfg) {
-                    if cfg.style.structural_headings_newpage {
-                        out.push_str("\\clearpage\n");
-                    }
-                    let upper = clean.trim().to_uppercase();
-                    *in_bibliography =
-                        upper == cfg.style.bibliography_heading.trim().to_uppercase();
-                    *skip_next_section_pagebreak =
-                        upper == cfg.style.main_part_heading.trim().to_uppercase();
-
-                    let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
-                    *ctx = if unnumbered {
-                        Ctx::StructuralUnnumbered
-                    } else {
-                        Ctx::StructuralNumbered
-                    };
-                    if is_appendix_heading(&clean, cfg) {
-                        *ctx = Ctx::Appendix;
-                        render_appendix_heading(&clean, out, cfg)?;
-                    } else {
-                        render_structural_heading(&clean, out, cfg)?;
-                    }
-                } else {
-                    log::warn(&format!(
-                        "H1 heading not in structural list: '{}' - rendering as \\section",
-                        clean
-                    ));
-                    *in_bibliography = false;
-                    *ctx = Ctx::StructuralNumbered;
-                    if *skip_next_section_pagebreak {
-                        *skip_next_section_pagebreak = false;
-                    } else {
-                        out.push_str("\\clearpage\n");
-                    }
-                    out.push_str(&format!(
-                        "\\section{{{}}}\n\n",
-                        escape_latex(&to_title_case_if_upper(&clean))
-                    ));
-                }
-            } else {
-                *in_bibliography = false;
-                let is_numbered_section = h.level == 2
-                    && raw_text
-                        .trim()
-                        .chars()
-                        .next()
-                        .map_or(false, |c| c.is_ascii_digit());
-                if is_numbered_section {
-                    *ctx = Ctx::StructuralNumbered;
-                }
-
-                if *ctx == Ctx::StructuralUnnumbered {
-                    out.push_str(&format!(
-                        "\\textbf{{{}}}\\par\n\n",
-                        escape_latex(&to_title_case_if_upper(&clean))
-                    ));
-                } else {
-                    let (cmd, numbered) = match (*ctx, h.level) {
-                        (Ctx::StructuralNumbered, 2) => ("section", true),
-                        (Ctx::StructuralNumbered, 3) => ("subsection", true),
-                        (Ctx::StructuralNumbered, _) => ("subsubsection", true),
-                        (Ctx::Appendix, 2) => ("subsection", true),
-                        (Ctx::Appendix, 3) => ("subsubsection", true),
-                        (Ctx::Appendix, _) => ("paragraph", true),
-                        (Ctx::Ordinary, 2) => ("subsection", true),
-                        (Ctx::Ordinary, 3) => ("subsubsection", true),
-                        (Ctx::Ordinary, _) => ("paragraph", true),
-                        _ => ("section", true),
-                    };
-                    let display = to_title_case_if_upper(&clean);
-
-                    if cmd == "section" {
-                        if *skip_next_section_pagebreak {
-                            *skip_next_section_pagebreak = false;
-                        } else {
-                            out.push_str("\\clearpage\n");
-                        }
-                    }
-
-                    if !numbered {
-                        let toc_cmd = cmd.trim_end_matches('*');
-                        out.push_str(&format!(
-                            "\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n\n",
-                            toc_cmd, escape_latex(&display), cmd, escape_latex(&display)
-                        ));
-                    } else {
-                        out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(&display)));
-                    }
-                }
-            }
+            render_heading(node, h.level, out, cfg, state)?;
         }
         NodeValue::Paragraph => {
-            let raw_text = extract_text(node).trim().to_string();
-            if raw_text.starts_with("#tbl:") {
-                let after = &raw_text[5..];
-                let mut label = None;
-                let mut caption_tokens = Vec::new();
-                let mut breakable = true;
-                let mut new_page = false;
-
-                for token in after.split_whitespace() {
-                    if label.is_none()
-                        && !token.contains('=')
-                        && token != "breakable"
-                        && token != "new_page"
-                    {
-                        label = Some(format!("tbl:{}", token));
-                    } else if token == "breakable=false" || token == "breakable=0" {
-                        breakable = false;
-                    } else if token == "breakable=true"
-                        || token == "breakable=1"
-                        || token == "breakable"
-                    {
-                        breakable = true;
-                    } else if token == "new_page=true"
-                        || token == "new_page=1"
-                        || token == "new_page"
-                    {
-                        new_page = true;
-                    } else if token == "new_page=false" || token == "new_page=0" {
-                        new_page = false;
-                    } else {
-                        caption_tokens.push(token);
-                    }
-                }
-                let caption = caption_tokens.join(" ");
-                *pending = Some(PendingTableCaption {
-                    label,
-                    caption,
-                    breakable,
-                    new_page,
-                });
-                return Ok(());
-            }
-
-            let children: Vec<_> = node.children().collect();
-            if children.len() == 1 {
-                if let NodeValue::Math(m) = &children[0].data.borrow().value {
-                    if m.display_math {
-                        out.push_str(&format!(
-                            "\\begin{{equation}}\n{}\n\\end{{equation}}\n\n",
-                            m.literal.trim()
-                        ));
-                        return Ok(());
-                    }
-                }
-            }
-
-            let mut has_image = false;
-            let mut has_text = false;
-            for child in node.children() {
-                match &child.data.borrow().value {
-                    NodeValue::Image(_) => has_image = true,
-                    NodeValue::Text(t) if !t.trim().is_empty() => has_text = true,
-                    NodeValue::SoftBreak | NodeValue::LineBreak => {}
-                    _ => has_text = true,
-                }
-            }
-            if has_image && !has_text {
-                for child in node.children() {
-                    if let NodeValue::Image(link) = &child.data.borrow().value {
-                        render_image_block(child, link, out, cfg)?;
-                    }
-                }
-            } else {
-                let mut p = String::new();
-                render_inline(node, &mut p, cfg)?;
-                if !p.trim().is_empty() {
-                    out.push_str(p.trim());
-                    out.push_str("\n\n");
-                }
-            }
+            render_paragraph(node, out, cfg, state)?;
         }
         NodeValue::CodeBlock(code) => {
             render_code_block(&code, out, cfg);
         }
         NodeValue::List(_) => {
-            render_list(node, out, cfg, *in_bibliography)?;
+            render_list(node, out, cfg, state)?;
         }
         NodeValue::Table(_) => {
-            let meta = pending.take();
-            render_table(node, out, meta, cfg)?;
+            let meta = state.pending_table.take();
+            render_table(node, out, meta, cfg, state)?;
         }
         NodeValue::Image(link) => render_image_block(node, &link, out, cfg)?,
         NodeValue::BlockQuote => {
             out.push_str("\\begin{quote}\n");
             for child in node.children() {
-                render_node(
-                    child,
-                    out,
-                    cfg,
-                    ctx,
-                    pending,
-                    skip_next_section_pagebreak,
-                    in_bibliography,
-                )?;
+                render_node(child, out, cfg, state)?;
             }
             out.push_str("\\end{quote}\n\n");
         }
+        NodeValue::FootnoteDefinition(_) => {
+            // Consumed by `collect_footnotes`.
+        }
         _ => {
             for child in node.children() {
-                render_node(
-                    child,
-                    out,
-                    cfg,
-                    ctx,
-                    pending,
-                    skip_next_section_pagebreak,
-                    in_bibliography,
-                )?;
+                render_node(child, out, cfg, state)?;
             }
         }
     }
     Ok(())
 }
 
+fn render_heading<'a>(
+    node: &'a AstNode<'a>,
+    level: u8,
+    out: &mut String,
+    cfg: &Config,
+    state: &mut RenderState,
+) -> Result<()> {
+    let raw_text = extract_text(node);
+    let clean = strip_heading_number(&raw_text)
+        .trim_end_matches('.')
+        .to_string();
+
+    if level == 1 {
+        if is_structural(&clean, cfg) {
+            if cfg.style.structural_headings_newpage {
+                out.push_str("\\clearpage\n");
+            }
+            let upper = clean.trim().to_uppercase();
+            state.in_bibliography = upper == cfg.style.bibliography_heading.trim().to_uppercase();
+            state.skip_next_section_pagebreak =
+                upper == cfg.style.main_part_heading.trim().to_uppercase();
+
+            let unnumbered = cfg.style.is_unnumbered_subsection(&clean);
+            state.ctx = if unnumbered {
+                Ctx::StructuralUnnumbered
+            } else {
+                Ctx::StructuralNumbered
+            };
+            if is_appendix_heading(&clean, cfg) {
+                state.ctx = Ctx::Appendix;
+                render_appendix_heading(&clean, out, cfg)?;
+            } else {
+                render_structural_heading(&clean, out, cfg)?;
+            }
+        } else {
+            log::warn(&format!(
+                "H1 heading not in structural list: '{}' - rendering as \\section",
+                clean
+            ));
+            state.in_bibliography = false;
+            state.ctx = Ctx::StructuralNumbered;
+            if state.skip_next_section_pagebreak {
+                state.skip_next_section_pagebreak = false;
+            } else {
+                out.push_str("\\clearpage\n");
+            }
+            out.push_str(&format!(
+                "\\section{{{}}}\n\n",
+                escape_latex(&to_title_case_if_upper(&clean))
+            ));
+        }
+    } else {
+        state.in_bibliography = false;
+        let is_numbered_section = level == 2
+            && raw_text
+                .trim()
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_ascii_digit());
+        if is_numbered_section {
+            state.ctx = Ctx::StructuralNumbered;
+        }
+
+        if state.ctx == Ctx::StructuralUnnumbered {
+            out.push_str(&format!(
+                "\\textbf{{{}}}\\par\n\n",
+                escape_latex(&to_title_case_if_upper(&clean))
+            ));
+            return Ok(());
+        }
+
+        let (cmd, numbered) = match (state.ctx, level) {
+            (Ctx::StructuralNumbered, 2) => ("section", true),
+            (Ctx::StructuralNumbered, 3) => ("subsection", true),
+            (Ctx::StructuralNumbered, _) => ("subsubsection", true),
+            (Ctx::Appendix, 2) => ("subsection", true),
+            (Ctx::Appendix, 3) => ("subsubsection", true),
+            (Ctx::Appendix, _) => ("paragraph", true),
+            (Ctx::Ordinary, 2) => ("subsection", true),
+            (Ctx::Ordinary, 3) => ("subsubsection", true),
+            (Ctx::Ordinary, _) => ("paragraph", true),
+            _ => ("section", true),
+        };
+        let display = to_title_case_if_upper(&clean);
+
+        if cmd == "section" {
+            if state.skip_next_section_pagebreak {
+                state.skip_next_section_pagebreak = false;
+            } else {
+                out.push_str("\\clearpage\n");
+            }
+        }
+
+        if !numbered {
+            let toc_cmd = cmd.trim_end_matches('*');
+            out.push_str(&format!(
+                "\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n\n",
+                toc_cmd,
+                escape_latex(&display),
+                cmd,
+                escape_latex(&display)
+            ));
+        } else {
+            out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(&display)));
+        }
+    }
+    Ok(())
+}
+
+fn render_paragraph<'a>(
+    node: &'a AstNode<'a>,
+    out: &mut String,
+    cfg: &Config,
+    state: &mut RenderState,
+) -> Result<()> {
+    let raw_text = extract_text(node).trim().to_string();
+
+    // `#tbl:name Caption ...` — pending table caption.
+    if let Some(after) = raw_text.strip_prefix("#tbl:") {
+        let (label, caption, breakable, new_page) = parse_table_meta(after);
+        state.pending_table = Some(PendingTableCaption {
+            label,
+            caption,
+            breakable,
+            new_page,
+        });
+        return Ok(());
+    }
+
+    // `#eq:name` — pending equation label.
+    if let Some(after) = raw_text.strip_prefix("#eq:") {
+        let name = after.split_whitespace().next().unwrap_or("").trim();
+        if name.is_empty() {
+            log::warn("empty `#eq:` label — ignoring");
+        } else {
+            state.pending_equation_label = Some(format!("eq:{}", name));
+        }
+        return Ok(());
+    }
+
+    // Display math paragraph?
+    let children: Vec<_> = node.children().collect();
+    if children.len() == 1 {
+        if let NodeValue::Math(m) = &children[0].data.borrow().value {
+            if m.display_math {
+                let mut eq = String::from("\\begin{equation}\n");
+                eq.push_str(m.literal.trim());
+                if let Some(lbl) = state.pending_equation_label.take() {
+                    eq.push_str(&format!("\n\\label{{{}}}", lbl));
+                }
+                eq.push_str("\n\\end{equation}\n\n");
+                out.push_str(&eq);
+                return Ok(());
+            }
+        }
+    }
+
+    // Non-math paragraph — drop any dangling equation label.
+    if let Some(lbl) = state.pending_equation_label.take() {
+        log::warn(&format!(
+            "equation label '{}' was not followed by display math",
+            lbl
+        ));
+    }
+
+    // Image-only paragraph — render as a figure block.
+    let mut has_image = false;
+    let mut has_text = false;
+    for child in node.children() {
+        match &child.data.borrow().value {
+            NodeValue::Image(_) => has_image = true,
+            NodeValue::Text(t) if !t.trim().is_empty() => has_text = true,
+            NodeValue::SoftBreak | NodeValue::LineBreak => {}
+            _ => has_text = true,
+        }
+    }
+    if has_image && !has_text {
+        for child in node.children() {
+            if let NodeValue::Image(link) = &child.data.borrow().value {
+                render_image_block(child, link, out, cfg)?;
+            }
+        }
+    } else {
+        let mut p = String::new();
+        render_inline(node, &mut p, cfg, state)?;
+        if !p.trim().is_empty() {
+            out.push_str(p.trim());
+            out.push_str("\n\n");
+        }
+    }
+    Ok(())
+}
+
+/// Splits `#tbl:` info string into (label, caption, breakable, new_page).
+fn parse_table_meta(after: &str) -> (Option<String>, String, bool, bool) {
+    let mut label = None;
+    let mut caption_tokens = Vec::new();
+    let mut breakable = true;
+    let mut new_page = false;
+
+    for token in after.split_whitespace() {
+        if label.is_none() && !token.contains('=') && token != "breakable" && token != "new_page" {
+            label = Some(format!("tbl:{}", token));
+        } else if token == "breakable=false" || token == "breakable=0" {
+            breakable = false;
+        } else if token == "breakable=true" || token == "breakable=1" || token == "breakable" {
+            breakable = true;
+        } else if token == "new_page=true" || token == "new_page=1" || token == "new_page" {
+            new_page = true;
+        } else if token == "new_page=false" || token == "new_page=0" {
+            new_page = false;
+        } else {
+            caption_tokens.push(token);
+        }
+    }
+    (label, caption_tokens.join(" "), breakable, new_page)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Code blocks
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Parses a code-block info string.
+///
+/// Grammar: `<lang> [#lst:name] [caption...]`
+/// The language token is optional when `#lst:` is the first token.
+fn parse_code_info(info: &str) -> (&str, Option<String>, Option<String>) {
+    let tokens: Vec<&str> = info.split_whitespace().collect();
+    let mut lang = "";
+    let mut idx = 0;
+
+    if !tokens.is_empty() && !tokens[0].starts_with('#') && !tokens[0].contains('=') {
+        lang = tokens[0];
+        idx = 1;
+    }
+
+    let mut label = None;
+    let mut caption_tokens = Vec::new();
+    for tok in &tokens[idx..] {
+        if let Some(l) = tok.strip_prefix("#lst:") {
+            label = Some(format!("lst:{}", l));
+        } else if tok.starts_with('#') && !tok.starts_with("#!") {
+            log::warn(&format!("unknown code-block tag '{}' — ignored", tok));
+        } else {
+            caption_tokens.push(*tok);
+        }
+    }
+    let caption = if caption_tokens.is_empty() {
+        None
+    } else {
+        Some(caption_tokens.join(" "))
+    };
+    (lang, label, caption)
+}
+
 fn render_code_block(code: &NodeCodeBlock, out: &mut String, cfg: &Config) {
     let literal = code.literal.trim_end();
-    let lang = code.info.split_whitespace().next().unwrap_or("").trim();
+    let (lang, label, caption) = parse_code_info(&code.info);
 
     if !cfg.code.enabled {
+        if label.is_some() || caption.is_some() {
+            log::warn("code block has label/caption but code rendering is disabled");
+        }
         out.push_str(&format!(
             "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
             literal
@@ -368,21 +507,48 @@ fn render_code_block(code: &NodeCodeBlock, out: &mut String, cfg: &Config) {
 
     if cfg.code.engine.eq_ignore_ascii_case("minted") {
         let m = map_minted_lang(lang);
-        out.push_str(&format!(
-            "\\begin{{minted}}{{{}}}\n{}\n\\end{{minted}}\n\n",
-            m, literal
-        ));
+        let mut opts: Vec<String> = Vec::new();
+        if let Some(c) = &caption {
+            opts.push(format!("caption={{{}}}", escape_latex(c)));
+        }
+        if let Some(l) = &label {
+            opts.push(format!("label={{{}}}", l));
+        }
+        if opts.is_empty() {
+            out.push_str(&format!(
+                "\\begin{{minted}}{{{}}}\n{}\n\\end{{minted}}\n\n",
+                m, literal
+            ));
+        } else {
+            out.push_str(&format!(
+                "\\begin{{minted}}[{}]{{{}}}\n{}\n\\end{{minted}}\n\n",
+                opts.join(", "),
+                m,
+                literal
+            ));
+        }
     } else {
         let l = map_listings_lang(lang);
-        if l.is_empty() {
+        let mut opts: Vec<String> = Vec::new();
+        if !l.is_empty() {
+            opts.push(format!("language={}", l));
+        }
+        if let Some(c) = &caption {
+            opts.push(format!("caption={{{}}}", escape_latex(c)));
+        }
+        if let Some(lbl) = &label {
+            opts.push(format!("label={{{}}}", lbl));
+        }
+        if opts.is_empty() {
             out.push_str(&format!(
                 "\\begin{{lstlisting}}\n{}\n\\end{{lstlisting}}\n\n",
                 literal
             ));
         } else {
             out.push_str(&format!(
-                "\\begin{{lstlisting}}[language={}]\n{}\n\\end{{lstlisting}}\n\n",
-                l, literal
+                "\\begin{{lstlisting}}[{}]\n{}\n\\end{{lstlisting}}\n\n",
+                opts.join(", "),
+                literal
             ));
         }
     }
@@ -426,18 +592,22 @@ fn map_minted_lang(lang: &str) -> String {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Lists
+// ─────────────────────────────────────────────────────────────────────────
+
 fn render_list<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
     cfg: &Config,
-    in_bibliography: bool,
+    state: &mut RenderState,
 ) -> Result<()> {
     let list_data = match &node.data.borrow().value {
         NodeValue::List(l) => l.clone(),
         _ => return Ok(()),
     };
     let is_ordered = list_data.list_type == comrak::nodes::ListType::Ordered;
-    let env = if is_ordered && in_bibliography {
+    let env = if is_ordered && state.in_bibliography {
         "stubiblist"
     } else if is_ordered {
         "enumerate"
@@ -463,13 +633,13 @@ fn render_list<'a>(
                         out.push('\n');
                     }
                     let mut p = String::new();
-                    render_inline(block, &mut p, cfg)?;
+                    render_inline(block, &mut p, cfg, state)?;
                     out.push_str(p.trim());
                     first_block = false;
                 }
                 NodeValue::List(_) => {
                     out.push('\n');
-                    render_list(block, out, cfg, in_bibliography)?;
+                    render_list(block, out, cfg, state)?;
                     first_block = false;
                 }
                 _ => {
@@ -477,7 +647,7 @@ fn render_list<'a>(
                         out.push('\n');
                     }
                     let mut p = String::new();
-                    render_inline(block, &mut p, cfg)?;
+                    render_inline(block, &mut p, cfg, state)?;
                     out.push_str(p.trim());
                     first_block = false;
                 }
@@ -488,6 +658,10 @@ fn render_list<'a>(
     out.push_str(&format!("\\end{{{}}}\n\n", env));
     Ok(())
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Headings helpers
+// ─────────────────────────────────────────────────────────────────────────
 
 fn is_structural(text: &str, cfg: &Config) -> bool {
     let t = text.trim().to_uppercase();
@@ -558,6 +732,8 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
         format!("{} {}", app_label, to_title_case_if_upper(title))
     };
 
+    // Reset counters and rebind \the<cnt> to the appendix letter.
+    // Includes subsections so sub-headings are numbered А.1, А.2, ...
     out.push_str(&format!(
         "\\clearpage\n\
          \\phantomsection\n\
@@ -565,14 +741,16 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
          \\setcounter{{figure}}{{0}}\n\
          \\setcounter{{table}}{{0}}\n\
          \\setcounter{{equation}}{{0}}\n\
+         \\setcounter{{subsection}}{{0}}\n\
+         \\setcounter{{subsubsection}}{{0}}\n\
          \\renewcommand{{\\thefigure}}{{{}.\\arabic{{figure}}}}\n\
          \\renewcommand{{\\thetable}}{{{}.\\arabic{{table}}}}\n\
          \\renewcommand{{\\theequation}}{{{}.\\arabic{{equation}}}}\n\
+         \\renewcommand{{\\thesubsection}}{{{}.\\arabic{{subsection}}}}\n\
+         \\renewcommand{{\\thesubsubsection}}{{{}.\\arabic{{subsection}}.\\arabic{{subsubsection}}}}\n\
          {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n",
         escape_latex(&toc_entry),
-        letter,
-        letter,
-        letter,
+        letter, letter, letter, letter, letter,
         escape_latex(&app_label)
     ));
 
@@ -587,7 +765,16 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
     Ok(())
 }
 
-fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> Result<()> {
+// ─────────────────────────────────────────────────────────────────────────
+// Inline rendering
+// ─────────────────────────────────────────────────────────────────────────
+
+fn render_inline<'a>(
+    node: &'a AstNode<'a>,
+    out: &mut String,
+    cfg: &Config,
+    state: &mut RenderState,
+) -> Result<()> {
     for child in node.children() {
         let v = child.data.borrow().value.clone();
         match v {
@@ -608,12 +795,12 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
             }
             NodeValue::Strong => {
                 out.push_str("\\textbf{");
-                render_inline(child, out, cfg)?;
+                render_inline(child, out, cfg, state)?;
                 out.push('}');
             }
             NodeValue::Emph => {
                 out.push_str("\\textit{");
-                render_inline(child, out, cfg)?;
+                render_inline(child, out, cfg, state)?;
                 out.push('}');
             }
             NodeValue::Link(link) => {
@@ -627,11 +814,11 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
                         escape_url(&link.url),
                         cfg.links.url_color
                     ));
-                    render_inline(child, out, cfg)?;
+                    render_inline(child, out, cfg, state)?;
                     out.push_str("}}");
                 } else {
                     out.push_str(&format!("\\href{{{}}}{{", escape_url(&link.url)));
-                    render_inline(child, out, cfg)?;
+                    render_inline(child, out, cfg, state)?;
                     out.push('}');
                 }
             }
@@ -639,10 +826,29 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
             NodeValue::Image(link) => render_image_inline(&link, out, cfg),
             NodeValue::Superscript => {
                 out.push_str("\\textsuperscript{");
-                render_inline(child, out, cfg)?;
+                render_inline(child, out, cfg, state)?;
                 out.push('}');
             }
-            _ => render_inline(child, out, cfg)?,
+            NodeValue::FootnoteReference(r) => {
+                let name = r.name.clone();
+                let num = state.footnote_numbers.get(&name).copied();
+                let content = state.footnotes.get(&name).cloned();
+                match (num, content) {
+                    (Some(n), _) => {
+                        out.push_str(&format!("\\footnotemark[{}]", n));
+                    }
+                    (None, Some(c)) => {
+                        state.footnote_counter += 1;
+                        let n = state.footnote_counter;
+                        state.footnote_numbers.insert(name, n);
+                        out.push_str(&format!("\\footnote{{{}}}", c));
+                    }
+                    (None, None) => {
+                        log::warn(&format!("undefined footnote reference: '{}'", name));
+                    }
+                }
+            }
+            _ => render_inline(child, out, cfg, state)?,
         }
     }
     Ok(())
@@ -707,6 +913,10 @@ fn parse_tildes(text: &str) -> String {
     result.push_str(&escape_latex(remaining));
     result
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Images
+// ─────────────────────────────────────────────────────────────────────────
 
 fn render_image_block<'a>(
     node: &'a AstNode<'a>,
@@ -823,13 +1033,24 @@ fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, Strin
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Table rendering with `<<` / `^^` folding.
+// Table rendering with `<<` / `^^` folding and column alignment.
 // ─────────────────────────────────────────────────────────────────────────
 
+/// Maps a `TableAlignment` to the LaTeX alignment command used inside
+/// `\multicolumn` specs.
+fn alignment_cmd(align: TableAlignment) -> &'static str {
+    match align {
+        TableAlignment::Left => "\\raggedright",
+        TableAlignment::Right => "\\raggedleft",
+        _ => "\\centering",
+    }
+}
+
 /// Folds `<<`-column markers into their left neighbour.
-fn merge_columns(raw: &[String]) -> Row {
+fn merge_columns(raw: &[String], alignments: &[TableAlignment]) -> Row {
     let mut result: Row = Vec::with_capacity(raw.len());
-    for cell in raw {
+    for (i, cell) in raw.iter().enumerate() {
+        let align = alignments.get(i).copied().unwrap_or(TableAlignment::Center);
         let s = cell.trim();
         if s == "<<" {
             if let Some(last) = result.last_mut() {
@@ -841,6 +1062,7 @@ fn merge_columns(raw: &[String]) -> Row {
                     rowspan: 1,
                     content: String::new(),
                     phantom: false,
+                    align,
                 });
             }
         } else {
@@ -849,6 +1071,7 @@ fn merge_columns(raw: &[String]) -> Row {
                 rowspan: 1,
                 content: cell.clone(),
                 phantom: false,
+                align,
             });
         }
     }
@@ -894,9 +1117,9 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
                     let (sr, sc) = target.unwrap();
                     let target_cell = &rows[sr][sc];
 
-                    // Проверяем, не пытаемся ли мы присоединить `^^` к ячейке,
-                    // которая уже объединена по горизонтали (`<<`), при этом
-                    // справа от `^^` в текущей строке есть контент.
+                    // Check for a conflict: attaching `^^` to a horizontally
+                    // merged cell while the current row has content in those
+                    // columns.
                     let mut conflict = false;
                     if target_cell.colspan > 1 {
                         let target_start: usize = rows[sr].iter().take(sc).map(|c| c.colspan).sum();
@@ -914,7 +1137,9 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
 
                     if conflict {
                         log::warn(&format!(
-                            "'^^' in table row {} (col {}) cannot merge with a cell spanning multiple columns because the current row has content in those columns; treating as empty cell",
+                            "'^^' in table row {} (col {}) cannot merge with a cell spanning \
+                             multiple columns because the current row has content in those \
+                             columns; treating as empty cell",
                             i, col
                         ));
                         rows[i][j].content.clear();
@@ -975,25 +1200,24 @@ fn active_columns_at_hline(rows: &[Row], i: usize, ncols: usize) -> Vec<usize> {
 
 /// Builds a `\multicolumn` column spec for `tabularx`/`xltabular` that
 /// makes a cell spanning `n` columns occupy exactly the horizontal space
-/// of those `n` `Y`-columns (`Y = >{\centering\arraybackslash}X`):
+/// of those `n` `X`-columns:
 ///
 ///   total = n·\hsize + (n−1)·2\tabcolsep + (n−1)·\arrayrulewidth
-fn multicolumn_spec(n: usize) -> String {
+fn multicolumn_spec(n: usize, align_cmd: &str) -> String {
     let ts = (n - 1) * 2;
     let rw = n - 1;
-    // Исправлено: убран лишний пробел после '>' (иначе tabularx ломается),
-    // и добавлен \leavevmode для корректного начала абзаца.
     format!(
-        ">{{\\hsize=\\dimexpr {n}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\\centering\\arraybackslash\\leavevmode}}X",
+        ">{{\\hsize=\\dimexpr {n}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\
+          {algn}\\arraybackslash\\leavevmode}}X",
         n = n,
         ts = ts,
         rw = rw,
+        algn = align_cmd,
     )
 }
 
 /// Emits one logical cell (may be colspan/rowspan/phantom).
 fn emit_cell(cell: &Cell, is_first: bool) -> String {
-    // Phantom cell with colspan 1 — just an empty cell.
     if cell.phantom && cell.colspan == 1 {
         return String::new();
     }
@@ -1001,14 +1225,15 @@ fn emit_cell(cell: &Cell, is_first: bool) -> String {
     let inner = if cell.phantom {
         String::new()
     } else if cell.rowspan > 1 {
-        // Используем `*` вместо `=`, чтобы текст центрировался естественно.
+        // `*` form centres the content naturally and respects
+        // `\multirowsetup`.
         format!("\\multirow{{{}}}{{*}}{{{}}}", cell.rowspan, cell.content)
     } else {
         cell.content.clone()
     };
 
     if cell.colspan > 1 {
-        let colspec = multicolumn_spec(cell.colspan);
+        let colspec = multicolumn_spec(cell.colspan, alignment_cmd(cell.align));
         let spec = if is_first {
             format!("|{}|", colspec)
         } else {
@@ -1042,6 +1267,7 @@ fn emit_header_row(row: &Row) -> String {
                 format!("\\textbf{{{}}}", c.content)
             },
             phantom: c.phantom,
+            align: c.align,
         })
         .collect();
     emit_row(&bold)
@@ -1083,21 +1309,28 @@ fn render_table<'a>(
     out: &mut String,
     meta: Option<PendingTableCaption>,
     cfg: &Config,
+    state: &mut RenderState,
 ) -> Result<()> {
+    // Read column alignments from the table AST.
+    let alignments: Vec<TableAlignment> = match &node.data.borrow().value {
+        NodeValue::Table(t) => t.alignments.clone(),
+        _ => Vec::new(),
+    };
+
     let mut raw_rows: Vec<Vec<String>> = Vec::new();
     for row_node in node.children() {
         if let NodeValue::TableRow(_) = &row_node.data.borrow().value {
             let mut cells = Vec::new();
             for cell_node in row_node.children() {
                 if let NodeValue::TableCell = &cell_node.data.borrow().value {
-                    // Сначала извлекаем "сырой" текст, чтобы не дать
-                    // escape_latex превратить `^^` в `\textasciicircum{}`.
+                    // Extract the raw text first so that `^^` and `<<`
+                    // aren't escaped into `\textasciicircum{}` etc.
                     let raw_text = extract_text(cell_node).trim().to_string();
                     if raw_text == "<<" || raw_text == "^^" {
                         cells.push(raw_text);
                     } else {
                         let mut cell_latex = String::new();
-                        render_inline(cell_node, &mut cell_latex, cfg)?;
+                        render_inline(cell_node, &mut cell_latex, cfg, state)?;
                         cells.push(cell_latex);
                     }
                 }
@@ -1123,7 +1356,10 @@ fn render_table<'a>(
     };
 
     // Fold `<<` then `^^`.
-    let mut processed: Vec<Row> = raw_rows.iter().map(|r| merge_columns(r)).collect();
+    let mut processed: Vec<Row> = raw_rows
+        .iter()
+        .map(|r| merge_columns(r, &alignments))
+        .collect();
     fold_rowspans(&mut processed);
 
     if processed
@@ -1138,6 +1374,16 @@ fn render_table<'a>(
             c.rowspan = 1;
         }
     }
+
+    // Column type string: `L` / `C` / `R` per GFM alignment.
+    let col_spec: String = (0..ncols)
+        .map(|i| match alignments.get(i) {
+            Some(TableAlignment::Left) => "L",
+            Some(TableAlignment::Right) => "R",
+            _ => "C",
+        })
+        .collect::<Vec<_>>()
+        .join("|");
 
     if breakable {
         if new_page {
@@ -1154,7 +1400,7 @@ fn render_table<'a>(
             cfg.style.table_font_size, baseline
         ));
         out.push_str("  \\begin{xltabular}{\\textwidth}{|");
-        out.push_str(&vec!["Y"; ncols].join("|"));
+        out.push_str(&col_spec);
         out.push_str("|}\n");
 
         let mut cap_line = String::new();
@@ -1216,7 +1462,7 @@ fn render_table<'a>(
             cfg.style.table_font_size, baseline
         ));
         out.push_str("  \\begin{tabularx}{\\textwidth}{|");
-        out.push_str(&vec!["Y"; ncols].join("|"));
+        out.push_str(&col_spec);
         out.push_str("|}\n  \\hline\n");
         out.push_str("    ");
         out.push_str(&emit_header_row(&processed[0]));
@@ -1240,6 +1486,10 @@ fn render_table<'a>(
     }
     Ok(())
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Text extraction & escaping helpers
+// ─────────────────────────────────────────────────────────────────────────
 
 fn extract_text<'a>(node: &'a AstNode<'a>) -> String {
     let mut s = String::new();
@@ -1302,7 +1552,8 @@ fn escape_url(url: &str) -> String {
     url.replace('%', "\\%").replace('#', "\\#")
 }
 
-fn escape_latex(s: &str) -> String {
+/// Escapes LaTeX special characters in plain text.
+pub fn escape_latex(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {

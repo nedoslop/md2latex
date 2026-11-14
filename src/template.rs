@@ -14,8 +14,13 @@
 //! * any value can be overridden from the config via `[extra]`;
 //! * swapping to another institution is a matter of pointing `templates.title`
 //!   at a different file — no code changes.
+//!
+//! User-visible title fields (`topic`, `university`, student names, …) are
+//! escaped before insertion so that stray `&`, `%`, `#`, `_` etc. cannot
+//! break the build. Use `[extra]` when you need raw LaTeX in the title page.
 
 use crate::config::{Config, Student};
+use crate::markdown::escape_latex;
 use anyhow::{Context, Result};
 use std::fs;
 use tera::{Context as TeraContext, Tera};
@@ -38,6 +43,7 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     let mut ctx = TeraContext::new();
     fill_title_context(&mut ctx, cfg);
     ctx.insert("extra", &cfg.extra);
+
     let title_rendered = tera.render("title.tex.tera", &ctx)?;
 
     ctx.insert("title_page", &title_rendered);
@@ -85,8 +91,7 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
 
     ctx.insert("images_interpolate", &cfg.images.interpolate);
 
-    // Biblatex. A missing *or empty* `bib_file` (the common "user didn't
-    // bother" case in frontmatter) falls back to `refs.bib`.
+    // Biblatex. Empty `bib_file` (common when unset) falls back to `refs.bib`.
     let bib_file = cfg
         .project
         .bib_file
@@ -124,9 +129,7 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
     ctx.insert("code_line_numbers", &cfg.code.line_numbers);
     ctx.insert("code_frame", &cfg.code.frame);
 
-    // Title meta (used by base template for PDF metadata and by the title
-    // page itself).
-    ctx.insert("topic", &cfg.title.topic);
+    // Author for PDF metadata (already escaped).
     ctx.insert("student_author", &collect_author(&cfg.title));
 
     tera.render("base.tex.tera", &ctx)
@@ -134,43 +137,44 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
 }
 
 fn collect_author(t: &crate::config::Title) -> String {
-    if !t.student.trim().is_empty() {
-        return t.student.clone();
-    }
-    let names: Vec<String> = t
-        .students
-        .iter()
-        .map(|s| s.name.trim().to_string())
-        .filter(|n| !n.is_empty())
-        .collect();
-    names.join(", ")
+    let raw = if !t.student.trim().is_empty() {
+        t.student.trim().to_string()
+    } else {
+        t.students
+            .iter()
+            .map(|s| s.name.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    escape_latex(&raw)
 }
 
 fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     let t = &cfg.title;
     let fill = cfg.style.title_page_fill_empty;
 
-    ctx.insert("university", &t.university);
-    ctx.insert("institute", &t.institute);
-    ctx.insert("department", &t.department);
-    ctx.insert("doc_kind", &t.doc_kind);
-    ctx.insert("direction_code", &t.direction_code);
-    ctx.insert("direction_name", &t.direction_name);
-    ctx.insert("topic", &t.topic);
+    ctx.insert("university", &escape_latex(&t.university));
+    ctx.insert("institute", &escape_latex(&t.institute));
+    ctx.insert("department", &escape_latex(&t.department));
+    ctx.insert("doc_kind", &escape_latex(&t.doc_kind));
+    ctx.insert("direction_code", &escape_latex(&t.direction_code));
+    ctx.insert("direction_name", &escape_latex(&t.direction_name));
+    ctx.insert("topic", &escape_latex(&t.topic));
 
     // Legacy single-student fields.
     ctx.insert("student", &fill_or_blank(&t.student, fill));
-    ctx.insert("student_id", &t.student_id);
+    ctx.insert("student_id", &escape_latex(&t.student_id));
     ctx.insert("group", &fill_or_blank(&t.group, fill));
 
-    // Normalized students list (always at least one entry).
+    // Normalised students list (always at least one entry).
     let students_ctx: Vec<Student> = if !t.students.is_empty() {
         t.students
             .iter()
             .map(|s| Student {
                 name: fill_or_blank(&s.name, fill),
-                group: s.group.clone(),
-                student_id: s.student_id.clone(),
+                group: escape_latex(&s.group),
+                student_id: escape_latex(&s.student_id),
             })
             .collect()
     } else if !t.student.trim().is_empty()
@@ -179,8 +183,8 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     {
         vec![Student {
             name: fill_or_blank(&t.student, fill),
-            group: t.group.clone(),
-            student_id: t.student_id.clone(),
+            group: escape_latex(&t.group),
+            student_id: escape_latex(&t.student_id),
         }]
     } else {
         vec![Student {
@@ -201,15 +205,18 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
         &fill_or_blank(&t.supervisor_title, fill),
     );
     ctx.insert("reviewer", &fill_or_blank(&t.reviewer, fill));
-    ctx.insert("year", &t.year);
-    ctx.insert("city", &t.city);
+    ctx.insert("year", &escape_latex(&t.year));
+    ctx.insert("city", &escape_latex(&t.city));
 }
 
+/// Escapes `value` (unless it is empty and `fill` is true — then a
+/// signature rule is emitted instead).
 fn fill_or_blank(value: &str, fill: bool) -> String {
-    if value.trim().is_empty() && fill {
+    let v = value.trim();
+    if v.is_empty() && fill {
         "\\rule{3.5cm}{0.4pt}".to_string()
     } else {
-        value.to_string()
+        escape_latex(v)
     }
 }
 

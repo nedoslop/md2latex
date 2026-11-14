@@ -60,7 +60,11 @@
 \usepackage{multirow}
 \usepackage{hhline}
 \renewcommand{\multirowsetup}{\centering}
-\newcolumntype{Y}{>{\centering\arraybackslash}X}
+% Column types honouring GFM table alignment.
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}X}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}  % legacy alias for C
 \renewcommand{\arraystretch}{1.2}
 \setlength{\doublerulesep}{1\arrayrulewidth}
 \usepackage{amsmath,amssymb}
