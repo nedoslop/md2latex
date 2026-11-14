@@ -143,11 +143,7 @@ pub fn prepare_images(
                 match convert_image(&full_src, &dest, &target_ext, dpi) {
                     Ok(()) => final_name.clone(),
                     Err(e) => {
-                        log::warn(&format!(
-                            "failed to convert {}: {}",
-                            full_src.display(),
-                            e
-                        ));
+                        log::warn(&format!("failed to convert {}: {}", full_src.display(), e));
                         // Fallback: copy with original extension, uniquified.
                         let mut fb = 1;
                         let mut fallback_base = format!("{}{}", sanitize(&stem), ext);
@@ -157,11 +153,7 @@ pub fn prepare_images(
                         }
                         let fallback = images_out.join(&fallback_base);
                         if let Err(e2) = fs::copy(&full_src, &fallback) {
-                            log::warn(&format!(
-                                "failed to copy {}: {}",
-                                full_src.display(),
-                                e2
-                            ));
+                            log::warn(&format!("failed to copy {}: {}", full_src.display(), e2));
                             return caps[0].to_string();
                         }
                         fallback_base

@@ -247,7 +247,10 @@ fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) -> Result<()>
     run_tool("xelatex", &args, dir, verbose)
         .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
 
-    log::success(&format!("PDF ready:     {}", dir.join("main.pdf").display()));
+    log::success(&format!(
+        "PDF ready:     {}",
+        dir.join("main.pdf").display()
+    ));
     Ok(())
 }
 
