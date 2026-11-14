@@ -8,11 +8,14 @@
 
 mod config;
 mod images;
+mod log;
 mod markdown;
 mod template;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use comfy_table::{presets::UTF8_FULL, Attribute, Cell, CellAlignment, Color, Table};
+use console::style;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -56,6 +59,8 @@ fn main() -> Result<()> {
     let total_start = Instant::now();
     let cli = Cli::parse();
 
+    log::header("md2latex-gost");
+
     let md_path = cli.input.clone();
     let md_content = fs::read_to_string(&md_path)
         .with_context(|| format!("failed to read {}", md_path.display()))?;
@@ -74,12 +79,10 @@ fn main() -> Result<()> {
     .context("failed to load configuration")?;
     let config_time = t.elapsed();
 
-    if !cfg.project.profile.is_empty() {
-        println!("Profile:       {}", cfg.project.profile);
-    }
-    if !cfg.project.doc_type.is_empty() {
-        println!("Document type: {}", cfg.project.doc_type);
-    }
+    log::field("Profile", &cfg.project.profile);
+    log::field("Document type", &cfg.project.doc_type);
+    log::field("Input", &md_path.display().to_string());
+    log::field("Output", &cfg.project.output_dir);
 
     let t = Instant::now();
     let out_dir = PathBuf::from(&cfg.project.output_dir);
@@ -110,7 +113,7 @@ fn main() -> Result<()> {
     fs::write(&tex_path, &full_latex)
         .with_context(|| format!("failed to write {}", tex_path.display()))?;
     let write_time = t.elapsed();
-    println!("LaTeX saved:   {}", tex_path.display());
+    log::success(&format!("LaTeX saved:   {}", tex_path.display()));
 
     let pdf_time = if cfg.project.compile_pdf {
         let shell_escape = cfg.code.enabled && cfg.code.engine.eq_ignore_ascii_case("minted");
@@ -135,6 +138,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Prints the summary table with per-stage timings.
+///
+/// Uses `comfy-table` so that ANSI colours in the value cells don't break
+/// column alignment (which is what a naive `{:>10}` + `console::style`
+/// combination does).
 #[allow(clippy::too_many_arguments)]
 fn print_timings(
     cfg: &config::Config,
@@ -146,23 +154,55 @@ fn print_timings(
     pdf_time: Option<Duration>,
     total: Duration,
 ) {
-    println!();
-    println!("Timings:");
-    println!("  config:        {:>10}", fmt_duration(config_time));
-    println!("  images:        {:>10}", fmt_duration(images_time));
-    println!("  md → latex:    {:>10}", fmt_duration(md_time));
-    println!("  render .tex:   {:>10}", fmt_duration(render_time));
-    println!("  write .tex:    {:>10}", fmt_duration(write_time));
+    // (label, duration) rows.
+    let mut rows: Vec<(String, Duration)> = vec![
+        ("Config".to_string(), config_time),
+        ("Images".to_string(), images_time),
+        ("Markdown → LaTeX".to_string(), md_time),
+        ("Render .tex".to_string(), render_time),
+        ("Write .tex".to_string(), write_time),
+    ];
     if let Some(t) = pdf_time {
         let engine = if cfg.code.enabled && cfg.code.engine.eq_ignore_ascii_case("minted") {
-            "xelatex (+ biber, shell-escape)"
+            "xelatex + biber + shell-escape"
         } else {
-            "xelatex (+ biber)"
+            "xelatex + biber"
         };
-        println!("  compile pdf:   {:>10}  ({})", fmt_duration(t), engine);
+        rows.push((format!("Compile PDF ({})", engine), t));
     }
-    println!("  ─────────────────────────");
-    println!("  total:         {:>10}", fmt_duration(total));
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(comfy_table::modifiers::UTF8_ROUND_CORNERS)
+        .set_header(vec![
+            Cell::new("Stage").fg(Color::Cyan),
+            Cell::new("Time")
+                .fg(Color::Cyan)
+                .set_alignment(CellAlignment::Right),
+        ]);
+
+    for (label, dur) in &rows {
+        table.add_row(vec![
+            Cell::new(label),
+            Cell::new(fmt_duration(*dur))
+                .fg(Color::Green)
+                .set_alignment(CellAlignment::Right),
+        ]);
+    }
+
+    table.add_row(vec![
+        Cell::new("Total").add_attribute(Attribute::Bold),
+        Cell::new(fmt_duration(total))
+            .fg(Color::Green)
+            .add_attribute(Attribute::Bold)
+            .set_alignment(CellAlignment::Right),
+    ]);
+
+    log::header("Timings");
+    println!("{table}");
+    println!();
+    let _ = style(""); // keep `style` import used even if later refactors drop it
 }
 
 fn fmt_duration(d: Duration) -> String {
@@ -190,24 +230,24 @@ fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) -> Result<()>
     }
     args.push("main.tex");
 
-    println!("xelatex [1/3]...");
+    log::info("xelatex [1/3]...");
     run_tool("xelatex", &args, dir, verbose)
         .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
 
     if tex_path.with_extension("bcf").exists() {
-        println!("biber...");
+        log::info("biber...");
         run_tool("biber", &["main"], dir, verbose).context("biber not found or failed")?;
     }
 
-    println!("xelatex [2/3]...");
+    log::info("xelatex [2/3]...");
     run_tool("xelatex", &args, dir, verbose)
         .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
 
-    println!("xelatex [3/3]...");
+    log::info("xelatex [3/3]...");
     run_tool("xelatex", &args, dir, verbose)
         .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
 
-    println!("PDF ready:     {}", dir.join("main.pdf").display());
+    log::success(&format!("PDF ready:     {}", dir.join("main.pdf").display()));
     Ok(())
 }
 
@@ -245,7 +285,7 @@ fn run_tool(name: &str, args: &[&str], dir: &Path, verbose: bool) -> Result<()> 
     // to stderr — dump whatever exists.
     let mut wrote = false;
     if !output.stdout.is_empty() {
-        eprintln!("─── {} stdout ───", name);
+        log::error(&format!("─── {} stdout ───", name));
         let _ = std::io::stderr().write_all(&output.stdout);
         wrote = true;
     }
@@ -253,12 +293,12 @@ fn run_tool(name: &str, args: &[&str], dir: &Path, verbose: bool) -> Result<()> 
         if wrote {
             eprintln!();
         }
-        eprintln!("─── {} stderr ───", name);
+        log::error(&format!("─── {} stderr ───", name));
         let _ = std::io::stderr().write_all(&output.stderr);
         wrote = true;
     }
     if !wrote {
-        eprintln!("({} produced no output)", name);
+        log::error(&format!("({} produced no output)", name));
     }
 
     anyhow::bail!(

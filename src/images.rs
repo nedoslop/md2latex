@@ -9,6 +9,7 @@
 //! new or genuinely modified sources (or a changed `[images]` config) trigger
 //! work.
 
+use crate::log;
 use anyhow::{Context, Result};
 use image::ImageFormat;
 use regex::Regex;
@@ -61,7 +62,7 @@ pub fn prepare_images(
         let rest = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
         if src.starts_with("http://") || src.starts_with("https://") {
-            eprintln!("warning: skipping URL image: {}", src);
+            log::warn(&format!("skipping URL image: {}", src));
             stats.urls += 1;
             return caps[0].to_string();
         }
@@ -73,7 +74,7 @@ pub fn prepare_images(
         };
 
         if !full_src.exists() {
-            eprintln!("warning: file not found: {}", full_src.display());
+            log::warn(&format!("file not found: {}", full_src.display()));
             stats.missing += 1;
             return caps[0].to_string();
         }
@@ -114,7 +115,7 @@ pub fn prepare_images(
         let src_fp = match src_fingerprint(&full_src) {
             Ok(fp) => fp,
             Err(e) => {
-                eprintln!("warning: cannot fingerprint {}: {}", full_src.display(), e);
+                log::warn(&format!("cannot fingerprint {}: {}", full_src.display(), e));
                 return caps[0].to_string();
             }
         };
@@ -142,7 +143,11 @@ pub fn prepare_images(
                 match convert_image(&full_src, &dest, &target_ext, dpi) {
                     Ok(()) => final_name.clone(),
                     Err(e) => {
-                        eprintln!("warning: failed to convert {}: {}", full_src.display(), e);
+                        log::warn(&format!(
+                            "failed to convert {}: {}",
+                            full_src.display(),
+                            e
+                        ));
                         // Fallback: copy with original extension, uniquified.
                         let mut fb = 1;
                         let mut fallback_base = format!("{}{}", sanitize(&stem), ext);
@@ -152,7 +157,11 @@ pub fn prepare_images(
                         }
                         let fallback = images_out.join(&fallback_base);
                         if let Err(e2) = fs::copy(&full_src, &fallback) {
-                            eprintln!("warning: failed to copy {}: {}", full_src.display(), e2);
+                            log::warn(&format!(
+                                "failed to copy {}: {}",
+                                full_src.display(),
+                                e2
+                            ));
                             return caps[0].to_string();
                         }
                         fallback_base
@@ -161,7 +170,7 @@ pub fn prepare_images(
             }
             None => {
                 if let Err(e) = fs::copy(&full_src, &dest) {
-                    eprintln!("warning: failed to copy {}: {}", full_src.display(), e);
+                    log::warn(&format!("failed to copy {}: {}", full_src.display(), e));
                     return caps[0].to_string();
                 }
                 final_name.clone()
@@ -178,13 +187,13 @@ pub fn prepare_images(
     // Drop entries whose output file disappeared, then persist.
     cache.prune_missing(&images_out);
     if let Err(e) = cache.save() {
-        eprintln!("warning: failed to save image cache: {}", e);
+        log::warn(&format!("failed to save image cache: {}", e));
     }
 
-    eprintln!(
+    log::info(&format!(
         "images: {} processed, {} cached, {} missing, {} url(s)",
         stats.processed, stats.cached, stats.missing, stats.urls
-    );
+    ));
 
     Ok(result.to_string())
 }

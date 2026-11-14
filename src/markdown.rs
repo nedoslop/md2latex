@@ -41,6 +41,7 @@
 //! tries; use body rows to simulate multi-row headers.
 
 use crate::config::Config;
+use crate::log;
 use anyhow::Result;
 use comrak::nodes::{AstNode, NodeCodeBlock, NodeLink, NodeValue};
 use comrak::options::Options;
@@ -160,10 +161,10 @@ fn render_node<'a>(
                         render_structural_heading(&clean, out, cfg)?;
                     }
                 } else {
-                    eprintln!(
-                        "warning: H1 heading not in structural list: '{}' - rendering as \\section",
+                    log::warn(&format!(
+                        "H1 heading not in structural list: '{}' - rendering as \\section",
                         clean
-                    );
+                    ));
                     *in_bibliography = false;
                     *ctx = Ctx::StructuralNumbered;
                     if *skip_next_section_pagebreak {
@@ -834,7 +835,7 @@ fn merge_columns(raw: &[String]) -> Row {
             if let Some(last) = result.last_mut() {
                 last.colspan += 1;
             } else {
-                eprintln!("warning: '<<' in first cell of a table row has nothing to merge with");
+                log::warn("'<<' in first cell of a table row has nothing to merge with");
                 result.push(Cell {
                     colspan: 1,
                     rowspan: 1,
@@ -912,10 +913,10 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
                     }
 
                     if conflict {
-                        eprintln!(
-                            "warning: '^^' in table row {} (col {}) cannot merge with a cell spanning multiple columns because the current row has content in those columns; treating as empty cell",
+                        log::warn(&format!(
+                            "'^^' in table row {} (col {}) cannot merge with a cell spanning multiple columns because the current row has content in those columns; treating as empty cell",
                             i, col
-                        );
+                        ));
                         rows[i][j].content.clear();
                         for c in col..(col + cspan) {
                             active.insert(c, (i, j));
@@ -926,11 +927,11 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
                         rows[i][j].content.clear();
                     }
                 } else {
-                    eprintln!(
-                        "warning: '^^' in table row {} (col {}) cannot be resolved; \
+                    log::warn(&format!(
+                        "'^^' in table row {} (col {}) cannot be resolved; \
                          treating as empty cell",
                         i, col
-                    );
+                    ));
                     rows[i][j].content.clear();
                     for c in col..(col + cspan) {
                         active.insert(c, (i, j));
@@ -1129,9 +1130,9 @@ fn render_table<'a>(
         .first()
         .map_or(false, |r| r.iter().any(|c| c.rowspan > 1))
     {
-        eprintln!(
-            "warning: multirow in table header is not supported; \
-             header will be emitted without rowspan"
+        log::warn(
+            "multirow in table header is not supported; \
+             header will be emitted without rowspan",
         );
         for c in processed[0].iter_mut() {
             c.rowspan = 1;
