@@ -15,7 +15,6 @@ mod template;
 use anyhow::{Context, Result};
 use clap::Parser;
 use comfy_table::{presets::UTF8_FULL, Attribute, Cell, CellAlignment, Color, Table};
-use console::style;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -173,8 +172,7 @@ fn print_timings(
 
     let mut table = Table::new();
     table
-        .load_preset(UTF8_FULL)
-        .apply_modifier(comfy_table::modifiers::UTF8_ROUND_CORNERS)
+        .load_style(UTF8_FULL.with_rounded_corners())
         .set_header(vec![
             Cell::new("Stage").fg(Color::Cyan),
             Cell::new("Time")
@@ -202,7 +200,6 @@ fn print_timings(
     log::header("Timings");
     println!("{table}");
     println!();
-    let _ = style(""); // keep `style` import used even if later refactors drop it
 }
 
 fn fmt_duration(d: Duration) -> String {
@@ -247,10 +244,7 @@ fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) -> Result<()>
     run_tool("xelatex", &args, dir, verbose)
         .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
 
-    log::success(&format!(
-        "PDF ready:     {}",
-        dir.join("main.pdf").display()
-    ));
+    log::success(&format!("PDF ready:     {}", dir.join("main.pdf").display()));
     Ok(())
 }
 

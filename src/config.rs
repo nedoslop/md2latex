@@ -209,12 +209,8 @@ pub struct Code {
     pub frame: bool,
 }
 
-fn default_code_engine() -> String {
-    "listings".into()
-}
-fn default_code_font_size() -> String {
-    "12pt".into()
-}
+fn default_code_engine() -> String { "listings".into() }
+fn default_code_font_size() -> String { "12pt".into() }
 
 impl Default for Code {
     fn default() -> Self {
@@ -244,24 +240,12 @@ pub struct Labels {
     pub bibliography_name: String,
 }
 
-fn default_table_continued() -> String {
-    "Continued table".into()
-}
-fn default_table_ended() -> String {
-    "End of table".into()
-}
-fn default_figure_name() -> String {
-    "Figure".into()
-}
-fn default_table_name() -> String {
-    "Table".into()
-}
-fn default_contents_name() -> String {
-    "CONTENTS".into()
-}
-fn default_bibliography_name() -> String {
-    "REFERENCES".into()
-}
+fn default_table_continued() -> String { "Continued table".into() }
+fn default_table_ended() -> String { "End of table".into() }
+fn default_figure_name() -> String { "Figure".into() }
+fn default_table_name() -> String { "Table".into() }
+fn default_contents_name() -> String { "CONTENTS".into() }
+fn default_bibliography_name() -> String { "REFERENCES".into() }
 
 impl Default for Labels {
     fn default() -> Self {
@@ -276,81 +260,31 @@ impl Default for Labels {
     }
 }
 
-fn default_font_fallback() -> String {
-    "TeX Gyre Termes".into()
-}
-fn default_font_size() -> String {
-    "14pt".into()
-}
-fn default_margin_left() -> String {
-    "30mm".into()
-}
-fn default_margin() -> String {
-    "20mm".into()
-}
-fn default_paragraph_indent() -> String {
-    "12.5mm".into()
-}
-fn default_line_spacing() -> String {
-    "onehalf".into()
-}
-fn default_numbering() -> String {
-    "within_section".into()
-}
-fn default_figure_width() -> String {
-    "0.8".into()
-}
-fn default_true() -> bool {
-    true
-}
-fn default_false() -> bool {
-    false
-}
-fn default_main_font() -> String {
-    "Times New Roman".into()
-}
-fn default_mono_font() -> String {
-    "Courier New".into()
-}
-fn default_caption_font_size() -> String {
-    "14pt".into()
-}
-fn default_table_font_size() -> String {
-    "12pt".into()
-}
-fn default_section_align() -> String {
-    "center".into()
-}
-fn default_section_before_skip() -> String {
-    "12pt".into()
-}
-fn default_section_after_skip() -> String {
-    "12pt".into()
-}
-fn default_subsection_before_skip() -> String {
-    "12pt".into()
-}
-fn default_subsection_after_skip() -> String {
-    "6pt".into()
-}
-fn default_appendix_default_letter() -> String {
-    "A".into()
-}
-fn default_appendix_prefix() -> String {
-    "APPENDIX".into()
-}
-fn default_main_part_heading() -> String {
-    "MAIN PART".into()
-}
-fn default_bibliography_heading() -> String {
-    "REFERENCES".into()
-}
-fn default_language() -> String {
-    "english".into()
-}
-fn default_other_language() -> String {
-    "russian".into()
-}
+fn default_font_fallback() -> String { "TeX Gyre Termes".into() }
+fn default_font_size() -> String { "14pt".into() }
+fn default_margin_left() -> String { "30mm".into() }
+fn default_margin() -> String { "20mm".into() }
+fn default_paragraph_indent() -> String { "12.5mm".into() }
+fn default_line_spacing() -> String { "onehalf".into() }
+fn default_numbering() -> String { "within_section".into() }
+fn default_figure_width() -> String { "0.8".into() }
+fn default_true() -> bool { true }
+fn default_false() -> bool { false }
+fn default_main_font() -> String { "Times New Roman".into() }
+fn default_mono_font() -> String { "Courier New".into() }
+fn default_caption_font_size() -> String { "14pt".into() }
+fn default_table_font_size() -> String { "12pt".into() }
+fn default_section_align() -> String { "center".into() }
+fn default_section_before_skip() -> String { "12pt".into() }
+fn default_section_after_skip() -> String { "12pt".into() }
+fn default_subsection_before_skip() -> String { "12pt".into() }
+fn default_subsection_after_skip() -> String { "6pt".into() }
+fn default_appendix_default_letter() -> String { "A".into() }
+fn default_appendix_prefix() -> String { "APPENDIX".into() }
+fn default_main_part_heading() -> String { "MAIN PART".into() }
+fn default_bibliography_heading() -> String { "REFERENCES".into() }
+fn default_language() -> String { "english".into() }
+fn default_other_language() -> String { "russian".into() }
 
 fn default_extra() -> toml::Value {
     toml::Value::Table(toml::Table::new())
@@ -445,15 +379,9 @@ pub struct Links {
     #[serde(default = "default_false")]
     pub boxed: bool,
 }
-fn default_link_color() -> String {
-    "black".into()
-}
-fn default_cite_color() -> String {
-    "black".into()
-}
-fn default_url_color() -> String {
-    "blue".into()
-}
+fn default_link_color() -> String { "black".into() }
+fn default_cite_color() -> String { "black".into() }
+fn default_url_color() -> String { "blue".into() }
 impl Default for Links {
     fn default() -> Self {
         Self {
@@ -475,9 +403,7 @@ pub struct Images {
     #[serde(default = "default_dpi")]
     pub dpi: u32,
 }
-fn default_dpi() -> u32 {
-    300
-}
+fn default_dpi() -> u32 { 300 }
 impl Default for Images {
     fn default() -> Self {
         Self {
@@ -497,15 +423,9 @@ pub struct Lists {
     #[serde(default = "default_bibliography_label")]
     pub bibliography_label: String,
 }
-fn default_itemize_label() -> String {
-    "\\textendash".into()
-}
-fn default_enumerate_label() -> String {
-    "\\arabic*)".into()
-}
-fn default_bibliography_label() -> String {
-    "\\arabic*.".into()
-}
+fn default_itemize_label() -> String { "\\textendash".into() }
+fn default_enumerate_label() -> String { "\\arabic*)".into() }
+fn default_bibliography_label() -> String { "\\arabic*.".into() }
 impl Default for Lists {
     fn default() -> Self {
         Self {
@@ -525,15 +445,9 @@ pub struct Templates {
     #[serde(default = "default_title_template")]
     pub title: String,
 }
-fn default_templates_dir() -> String {
-    String::new()
-}
-fn default_base_template() -> String {
-    "base.tex.tera".into()
-}
-fn default_title_template() -> String {
-    "title.tex.tera".into()
-}
+fn default_templates_dir() -> String { String::new() }
+fn default_base_template() -> String { "base.tex.tera".into() }
+fn default_title_template() -> String { "title.tex.tera".into() }
 impl Default for Templates {
     fn default() -> Self {
         Self {
@@ -544,15 +458,9 @@ impl Default for Templates {
     }
 }
 impl Templates {
-    pub fn dir_path(&self) -> PathBuf {
-        PathBuf::from(&self.dir)
-    }
-    pub fn base_path(&self) -> PathBuf {
-        self.dir_path().join(&self.base)
-    }
-    pub fn title_path(&self) -> PathBuf {
-        self.dir_path().join(&self.title)
-    }
+    pub fn dir_path(&self) -> PathBuf { PathBuf::from(&self.dir) }
+    pub fn base_path(&self) -> PathBuf { self.dir_path().join(&self.base) }
+    pub fn title_path(&self) -> PathBuf { self.dir_path().join(&self.title) }
 }
 
 #[derive(Debug, Deserialize)]
@@ -583,21 +491,11 @@ pub struct LineBreaking {
     #[serde(default = "default_hbadness")]
     pub hbadness: i32,
 }
-fn default_hyphen_penalty() -> i32 {
-    50
-}
-fn default_exhyphen_penalty() -> i32 {
-    50
-}
-fn default_emergencystretch() -> String {
-    "2em".into()
-}
-fn default_tolerance() -> i32 {
-    9999
-}
-fn default_hbadness() -> i32 {
-    10000
-}
+fn default_hyphen_penalty() -> i32 { 50 }
+fn default_exhyphen_penalty() -> i32 { 50 }
+fn default_emergencystretch() -> String { "2em".into() }
+fn default_tolerance() -> i32 { 9999 }
+fn default_hbadness() -> i32 { 10000 }
 impl Default for LineBreaking {
     fn default() -> Self {
         Self {
@@ -638,15 +536,15 @@ impl Config {
     ) -> Result<(Self, String)> {
         let (fm_str, body) = split_frontmatter(md_content);
 
-        let fm_yaml: serde_yaml::Value = match fm_str {
-            Some(s) if !s.trim().is_empty() => serde_yaml::from_str(s).with_context(|| {
+        let fm_yaml: serde_yaml_ng::Value = match fm_str {
+            Some(s) if !s.trim().is_empty() => serde_yaml_ng::from_str(s).with_context(|| {
                 format!(
                     "invalid YAML frontmatter in {} \
                      (frontmatter must be delimited by `---` lines at the top of the file)",
                     md_path.display()
                 )
             })?,
-            _ => serde_yaml::Value::Mapping(Default::default()),
+            _ => serde_yaml_ng::Value::Mapping(Default::default()),
         };
         let fm_yaml = substitute_env_in_yaml(fm_yaml)
             .with_context(|| format!("resolving $VAR references in {}", md_path.display()))?;
@@ -766,8 +664,8 @@ fn split_frontmatter(md: &str) -> (Option<&str>, &str) {
 /// Replaces `${NAME}` and `${NAME:-default}` in every string in the YAML
 /// tree. Missing vars without a default produce an error — we never want
 /// to silently drop a student's name from the title page.
-fn substitute_env_in_yaml(v: serde_yaml::Value) -> Result<serde_yaml::Value> {
-    use serde_yaml::Value as Y;
+fn substitute_env_in_yaml(v: serde_yaml_ng::Value) -> Result<serde_yaml_ng::Value> {
+    use serde_yaml_ng::Value as Y;
 
     Ok(match v {
         Y::String(s) => Y::String(substitute_env_str(&s)?),
@@ -776,7 +674,7 @@ fn substitute_env_in_yaml(v: serde_yaml::Value) -> Result<serde_yaml::Value> {
             Y::Sequence(items?)
         }
         Y::Mapping(m) => {
-            let mut out = serde_yaml::Mapping::new();
+            let mut out = serde_yaml_ng::Mapping::new();
             for (k, val) in m {
                 out.insert(k, substitute_env_in_yaml(val)?);
             }
@@ -824,8 +722,8 @@ fn substitute_env_str(s: &str) -> Result<String> {
 // YAML → toml::Value
 // ─────────────────────────────────────────────────────────────────────────
 
-fn yaml_to_toml(yaml: serde_yaml::Value) -> Result<toml::Value> {
-    use serde_yaml::Value as Y;
+fn yaml_to_toml(yaml: serde_yaml_ng::Value) -> Result<toml::Value> {
+    use serde_yaml_ng::Value as Y;
     use toml::Value as T;
 
     Ok(match yaml {
