@@ -4,8 +4,8 @@ fn main() {
         res.set("ProductName", "MarkDown to LaTeX");
         res.set("FileDescription", "Writing documents made easier");
         res.set("LegalCopyright", "Copyright © 2026 Pixelsuft");
-        // res.set_icon("test.ico");
-        res.set_manifest_file("settings.manifest");
+        res.set_icon("assets/icon.ico");
+        res.set_manifest_file("assets/settings.manifest");
         res.compile().unwrap();
     }
 }
