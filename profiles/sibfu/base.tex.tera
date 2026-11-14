@@ -61,6 +61,7 @@
 \renewcommand{\multirowsetup}{\centering}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 \renewcommand{\arraystretch}{1.2}
+\setlength{\doublerulesep}{1\arrayrulewidth}
 \usepackage{amsmath,amssymb}
 \usepackage{caption}
 \usepackage{xcolor}

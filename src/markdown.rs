@@ -29,8 +29,8 @@
 //!   is a tabularx-compatible `X` column with `\hsize` inflated so the
 //!   merged cell occupies the same total width as the columns it
 //!   replaced;
-//! * merged **rows** → `\multirow{N}{=}{...}` (the `=` form uses the
-//!   column's natural width and respects `\multirowsetup`);
+//! * merged **rows** → `\multirow{N}{*}{...}` (the `*` form uses the
+//!   content's natural width and respects `\multirowsetup`);
 //! * horizontal rules that would cut through a multirow are emitted as
 //!   `\cline{a-b}` instead of `\hline`, skipping the affected columns.
 //!
@@ -893,11 +893,40 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
 
                 if consistent && target.is_some() {
                     let (sr, sc) = target.unwrap();
-                    rows[sr][sc].rowspan += 1;
-                    rows[i][j].phantom = true;
-                    rows[i][j].content.clear();
-                    // `active[c]` stays pointing at (sr, sc) so subsequent
-                    // `^^` cells can chain through this row.
+                    let target_cell = &rows[sr][sc];
+                    
+                    // Проверяем, не пытаемся ли мы присоединить `^^` к ячейке,
+                    // которая уже объединена по горизонтали (`<<`), при этом
+                    // справа от `^^` в текущей строке есть контент.
+                    let mut conflict = false;
+                    if target_cell.colspan > 1 {
+                        let target_start: usize = rows[sr].iter().take(sc).map(|c| c.colspan).sum();
+                        let target_end = target_start + target_cell.colspan;
+                        
+                        let mut cur_c = 0;
+                        for (k, cell) in rows[i].iter().enumerate() {
+                            if k != j && cur_c < target_end && cur_c + cell.colspan > target_start {
+                                conflict = true;
+                                break;
+                            }
+                            cur_c += cell.colspan;
+                        }
+                    }
+
+                    if conflict {
+                        eprintln!(
+                            "warning: '^^' in table row {} (col {}) cannot merge with a cell spanning multiple columns because the current row has content in those columns; treating as empty cell",
+                            i, col
+                        );
+                        rows[i][j].content.clear();
+                        for c in col..(col + cspan) {
+                            active.insert(c, (i, j));
+                        }
+                    } else {
+                        rows[sr][sc].rowspan += 1;
+                        rows[i][j].phantom = true;
+                        rows[i][j].content.clear();
+                    }
                 } else {
                     eprintln!(
                         "warning: '^^' in table row {} (col {}) cannot be resolved; \
@@ -953,8 +982,10 @@ fn active_columns_at_hline(rows: &[Row], i: usize, ncols: usize) -> Vec<usize> {
 fn multicolumn_spec(n: usize) -> String {
     let ts = (n - 1) * 2;
     let rw = n - 1;
+    // Исправлено: убран лишний пробел после '>' (иначе tabularx ломается),
+    // и добавлен \leavevmode для корректного начала абзаца.
     format!(
-        "> {{\\hsize=\\dimexpr {n}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\\centering\\arraybackslash}}X",
+        ">{{\\hsize=\\dimexpr {n}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\\centering\\arraybackslash\\leavevmode}}X",
         n = n,
         ts = ts,
         rw = rw,
@@ -971,7 +1002,8 @@ fn emit_cell(cell: &Cell, is_first: bool) -> String {
     let inner = if cell.phantom {
         String::new()
     } else if cell.rowspan > 1 {
-        format!("\\multirow{{{}}}{{=}}{{{}}}", cell.rowspan, cell.content)
+        // Используем `*` вместо `=`, чтобы текст центрировался естественно.
+        format!("\\multirow{{{}}}{{*}}{{{}}}", cell.rowspan, cell.content)
     } else {
         cell.content.clone()
     };
@@ -1064,7 +1096,7 @@ fn render_table<'a>(
             let mut cells = Vec::new();
             for cell_node in row_node.children() {
                 if let NodeValue::TableCell = &cell_node.data.borrow().value {
-                    // ВАЖНО: сначала получаем "сырой" текст, чтобы не дать
+                    // Сначала извлекаем "сырой" текст, чтобы не дать
                     // escape_latex превратить `^^` в `\textasciicircum{}`.
                     let raw_text = extract_text(cell_node).trim().to_string();
                     if raw_text == "<<" || raw_text == "^^" {
