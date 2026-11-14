@@ -3,6 +3,26 @@
 //! Structural headings, appendix prefix, bibliography heading, and all
 //! caption labels are read from the config; this module contains no
 //! natural-language strings.
+//!
+//! ## Table column merging
+//!
+//! A GFM table cell whose trimmed content is exactly `<<` is a merge
+//! marker: it extends the horizontal span (`colspan`) of the cell to its
+//! left by one. The marker works in any row (header or data), and any
+//! number of consecutive `<<` cells chains into a single wide cell:
+//!
+//! ```markdown
+//! | Header A | Header B | Header C |
+//! |----------|----------|----------|
+//! | one      | <<       | three    |
+//! | p        | q        | <<       |
+//! | <<       | <<       | <<       |
+//! ```
+//!
+//! LaTeX side: merged cells are emitted with
+//! `\multicolumn{N}{<spec>}{...}`, where `<spec>` is a tabularx-compatible
+//! `X`-column with a `\hsize` adjustment so the merged cell occupies the
+//! same total width as the columns it replaced. No extra packages needed.
 
 use crate::config::Config;
 use anyhow::Result;
@@ -25,6 +45,14 @@ struct PendingTableCaption {
     breakable: bool,
     new_page: bool,
 }
+
+/// One logical cell of a table after `<<`-continuations have been folded
+/// into their left neighbour: `(colspan, content)`.
+type MergedCell = (usize, String);
+
+/// One row of logical cells. `Σ span` always equals the physical column
+/// count declared by the markdown table.
+type MergedRow = Vec<MergedCell>;
 
 pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let arena = Arena::new();
@@ -465,9 +493,6 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
         to_title_case_if_upper(text)
     };
 
-    // Silent main part: page break already emitted by the H1 handler, but
-    // do not print a visible heading. Toggle off via `main_part_silent = false`
-    // in a profile that wants the heading displayed.
     if cfg.style.main_part_silent
         && display.trim().to_uppercase() == cfg.style.main_part_heading.trim().to_uppercase()
     {
@@ -589,9 +614,6 @@ fn render_inline<'a>(node: &'a AstNode<'a>, out: &mut String, cfg: &Config) -> R
                 }
             }
             NodeValue::SoftBreak | NodeValue::LineBreak => out.push(' '),
-            // Inline image (inside a table cell, list item, or mixed
-            // paragraph): NO figure float, NO \caption — just
-            // \includegraphics sized to the surrounding \linewidth.
             NodeValue::Image(link) => render_image_inline(&link, out, cfg),
             NodeValue::Superscript => {
                 out.push_str("\\textsuperscript{");
@@ -664,9 +686,6 @@ fn parse_tildes(text: &str) -> String {
     result
 }
 
-/// Renders a **standalone** image (image alone in its own paragraph) as a
-/// real `figure` float with optional caption and label. Use this only in
-/// block contexts — never inside a table cell or list item.
 fn render_image_block<'a>(
     node: &'a AstNode<'a>,
     link: &NodeLink,
@@ -730,21 +749,18 @@ fn render_image_block<'a>(
     Ok(())
 }
 
-/// Renders an image in an **inline** context (table cell, list item, or
-/// paragraph that also contains text): just `\includegraphics`, sized to
-/// the surrounding `\linewidth`. No float, no `\caption`, no `\label` —
-/// the latter would require a float counter that we don't have here.
 fn render_image_inline(link: &NodeLink, out: &mut String, cfg: &Config) {
     let src = &link.url;
-    // Default width for inline images: the current line/container width.
     let (_, width, _) = parse_image_title(&link.title, "\\linewidth");
 
-    let width_spec =
-        if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') {
-            width
-        } else {
-            format!("{}\\linewidth", width)
-        };
+    let width_spec = if width.contains("\\textwidth")
+        || width.contains("\\linewidth")
+        || width.contains('%')
+    {
+        width
+    } else {
+        format!("{}\\linewidth", width)
+    };
     let interpolate_opt = if cfg.images.interpolate {
         ",interpolate=true"
     } else {
@@ -786,6 +802,21 @@ fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, Strin
     (label, width, caption)
 }
 
+/// Renders a GFM table into LaTeX, honouring `<<`-merge markers (see
+/// module-level docs) and the `#tbl:` caption directive.
+///
+/// The column-spec of the table is always `|Y|Y|…|Y|` (`ncols` times).
+/// A logical cell with `span > 1` is emitted as
+/// `\multicolumn{span}{<cols>}{content}` where `<cols>` is a
+/// tabularx-compatible `X` column whose `\hsize` is inflated so that the
+/// merged cell occupies the same total width as the columns it replaced:
+///
+///   `n·\hsize + (n−1)·2\tabcolsep + (n−1)·\arrayrulewidth`
+///
+/// The leading `|` of the multicolumn spec is added only for the first
+/// cell of the row, and the trailing `|` is always present — this matches
+/// how the outer `|Y|Y|…|Y|` spec distributes vertical rules between
+/// cells.
 fn render_table<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
@@ -809,15 +840,8 @@ fn render_table<'a>(
     if rows.is_empty() {
         return Ok(());
     }
-    let ncols = rows.first().map(|r| r.len()).unwrap_or(1).max(1);
+    let ncols = rows[0].len().max(1);
     let baseline = compute_baseline(&cfg.style.table_font_size);
-
-    let mut gap_cells =
-        vec!["\\omit\\vrule width\\arrayrulewidth height\\doublerulesep\\hfil".to_string(); ncols];
-    if let Some(last) = gap_cells.last_mut() {
-        last.push_str("\\vrule width\\arrayrulewidth height\\doublerulesep");
-    }
-    let header_sep = format!("\\hline\n  {} \\\\\n  \\hline", gap_cells.join(" & "));
 
     let (caption_latex, label_latex, breakable, new_page) = match meta {
         Some(m) => (
@@ -828,6 +852,9 @@ fn render_table<'a>(
         ),
         None => (String::new(), String::new(), true, false),
     };
+
+    // Fold `<<`-continuation cells into their left neighbour.
+    let processed: Vec<MergedRow> = rows.iter().map(|r| merge_cells(r)).collect();
 
     if breakable {
         if new_page {
@@ -861,36 +888,31 @@ fn render_table<'a>(
             out.push_str(&format!("  {} \\\\\n", cap_line));
         }
 
-        let bold: Vec<String> = rows
-            .first()
-            .map(|r| r.iter().map(|c| format!("\\textbf{{{}}}", c)).collect())
-            .unwrap_or_default();
+        let header = emit_header_row(&processed[0]);
 
         out.push_str("  \\hline\n  ");
-        out.push_str(&bold.join(" & "));
-        out.push_str(&format!(" \\\\\n  {}\n  \\endfirsthead\n", header_sep));
+        out.push_str(&header);
+        out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
 
         out.push_str("  \\hline\n  ");
-        out.push_str(&bold.join(" & "));
-        out.push_str(&format!(" \\\\\n  {}\n  \\endhead\n", header_sep));
+        out.push_str(&header);
+        out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
 
         out.push_str("  \\endfoot\n");
         out.push_str("  \\endlastfoot\n");
 
-        let data_rows: Vec<_> = rows.iter().skip(1).collect();
-        let last_idx = data_rows.len().saturating_sub(1);
-
-        for (idx, row) in data_rows.iter().enumerate() {
+        let total_data = processed.len().saturating_sub(1);
+        for (idx, row) in processed.iter().skip(1).enumerate() {
             out.push_str("  ");
-            if idx == last_idx {
-                let mut last_row = (*row).clone();
-                if let Some(first_cell) = last_row.first_mut() {
-                    first_cell.push_str("\\label{ltend:\\arabic{ltid}}");
+            let mut row_data = row.clone();
+            // `\label{ltend:…}` marks the page of the LAST data row so the
+            // "Continued / End of table" header can choose the right label.
+            if idx + 1 == total_data {
+                if let Some(last_cell) = row_data.last_mut() {
+                    last_cell.1.push_str("\\label{ltend:\\arabic{ltid}}");
                 }
-                out.push_str(&last_row.join(" & "));
-            } else {
-                out.push_str(&row.join(" & "));
             }
+            out.push_str(&emit_row(&row_data));
             out.push_str(" \\\\\n  \\hline\n");
         }
 
@@ -912,17 +934,13 @@ fn render_table<'a>(
         out.push_str("  \\begin{tabularx}{\\textwidth}{|");
         out.push_str(&vec!["Y"; ncols].join("|"));
         out.push_str("|}\n  \\hline\n");
-        for (i, row) in rows.iter().enumerate() {
-            if i == 0 {
-                let bold: Vec<String> = row.iter().map(|c| format!("\\textbf{{{}}}", c)).collect();
-                out.push_str("    ");
-                out.push_str(&bold.join(" & "));
-                out.push_str(&format!(" \\\\\n  {}\n", header_sep));
-            } else {
-                out.push_str("    ");
-                out.push_str(&row.join(" & "));
-                out.push_str(" \\\\\n  \\hline\n");
-            }
+        out.push_str("    ");
+        out.push_str(&emit_header_row(&processed[0]));
+        out.push_str(" \\\\\n  \\hline\\hline\n");
+        for row in processed.iter().skip(1) {
+            out.push_str("    ");
+            out.push_str(&emit_row(row));
+            out.push_str(" \\\\\n  \\hline\n");
         }
         out.push_str("  \\end{tabularx}\n  }\n");
         if !cfg.style.table_caption_above {
@@ -936,6 +954,81 @@ fn render_table<'a>(
         out.push_str("\\end{table}\n\n");
     }
     Ok(())
+}
+
+/// Folds `<<`-continuation cells into their left neighbour.
+///
+/// A cell is a continuation if its trimmed content is exactly `<<`.
+/// Continuations increment the span of the previous logical cell; a
+/// leading `<<` (nothing to merge with) produces a warning and an empty
+/// cell of span 1.
+fn merge_cells(row: &[String]) -> MergedRow {
+    let mut result: MergedRow = Vec::with_capacity(row.len());
+    for cell in row {
+        if cell.trim() == "<<" {
+            if let Some(last) = result.last_mut() {
+                last.0 += 1;
+            } else {
+                eprintln!("warning: '<<' in first cell of a table row has nothing to merge with");
+                result.push((1, String::new()));
+            }
+        } else {
+            result.push((1, cell.clone()));
+        }
+    }
+    result
+}
+
+/// Emits one logical row of cells as `a & b & c`.
+fn emit_row(row: &MergedRow) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(row.len());
+    for (i, (span, content)) in row.iter().enumerate() {
+        if *span <= 1 {
+            parts.push(content.clone());
+            continue;
+        }
+        let colspec = multicolumn_spec(*span);
+        // The leading `|` of the multicolumn spec must appear only on the
+        // first cell of the row; for subsequent cells it is provided by
+        // the previous cell's trailing `|`.
+        let spec = if i == 0 {
+            format!("|{}|", colspec)
+        } else {
+            format!("{}|", colspec)
+        };
+        parts.push(format!(
+            "\\multicolumn{{{}}}{{{}}}{{{}}}",
+            span, spec, content
+        ));
+    }
+    parts.join(" & ")
+}
+
+/// Same as `emit_row`, but wraps every logical cell in `\textbf{...}`.
+fn emit_header_row(row: &MergedRow) -> String {
+    let bold: MergedRow = row
+        .iter()
+        .map(|(span, content)| (*span, format!("\\textbf{{{}}}", content)))
+        .collect();
+    emit_row(&bold)
+}
+
+/// Builds a `\multicolumn` column spec for `tabularx`/`xltabular` that
+/// makes a cell spanning `n` columns occupy exactly the horizontal space
+/// of those `n` `Y`-columns (where `Y = >{\centering\arraybackslash}X`).
+///
+///   total = n·\hsize + (n−1)·2\tabcolsep + (n−1)·\arrayrulewidth
+///
+/// (each of the `n−1` internal gaps was `2\tabcolsep + \arrayrulewidth`).
+fn multicolumn_spec(n: usize) -> String {
+    let ts = (n - 1) * 2;
+    let rw = n - 1;
+    format!(
+        "> {{\\hsize=\\dimexpr {n}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\\centering\\arraybackslash}}X",
+        n = n,
+        ts = ts,
+        rw = rw,
+    )
 }
 
 fn extract_text<'a>(node: &'a AstNode<'a>) -> String {
