@@ -109,7 +109,7 @@
   position=top,
   singlelinecheck=false,
   font={normalsize},
-  skip=4pt,
+  skip=0pt,
   indention=0pt
 }
 {% if code_engine == "minted" %}
@@ -125,7 +125,9 @@
 {% else %}
 \usepackage{listings}
 \lstset{
-  basicstyle=\ttfamily\fontsize{ {{- code_font_size | trim -}} }{ {{- code_baseline | trim -}} }\selectfont,
+  aboveskip=4pt,
+  belowskip=6pt,
+  basicstyle=\linespread{1.0}\ttfamily\fontsize{ {{- code_font_size | trim -}} }{ {{- code_baseline | trim -}} }\selectfont,
   extendedchars=true,
   breaklines=true,
   columns=fullflexible,
@@ -289,6 +291,25 @@
 
 \cftsetpnumwidth{1.8em}
 \cftsetrmarg{2.5em}
+
+% ========== Footnotes (СТУ 7.5-07) ==========
+\usepackage[bottom]{footmisc}
+
+{% raw %}
+\renewcommand{\footnoterule}{%
+  \kern -3pt
+  \hrule width 5cm height 0.4pt
+  \kern 2.6pt
+}
+{% endraw %}
+
+\makeatletter
+\renewcommand{\@makefntext}[1]{
+  \fontsize{10pt}{12pt}\selectfont%
+  \linespread{1.0}\selectfont%
+  \textsuperscript{\@thefnmark}\,#1%
+}
+\makeatother
 
 % ========== Links ==========
 {% if links_colored %}
