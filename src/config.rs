@@ -238,6 +238,8 @@ pub struct Labels {
     pub figure_name: String,
     #[serde(default = "default_table_name")]
     pub table_name: String,
+    #[serde(default = "default_listing_name")]
+    pub listing_name: String,
     #[serde(default = "default_contents_name")]
     pub contents_name: String,
     #[serde(default = "default_bibliography_name")]
@@ -256,6 +258,9 @@ fn default_figure_name() -> String {
 fn default_table_name() -> String {
     "Table".into()
 }
+fn default_listing_name() -> String {
+    "Listing".into()
+}
 fn default_contents_name() -> String {
     "CONTENTS".into()
 }
@@ -270,6 +275,7 @@ impl Default for Labels {
             table_ended: default_table_ended(),
             figure_name: default_figure_name(),
             table_name: default_table_name(),
+            listing_name: default_listing_name(),
             contents_name: default_contents_name(),
             bibliography_name: default_bibliography_name(),
         }

@@ -103,6 +103,15 @@
 
 % ========== Code highlighting ==========
 {% if code_enabled %}
+\captionsetup[lstlisting]{
+  labelsep=stu,
+  justification=raggedright,
+  position=top,
+  singlelinecheck=false,
+  font={normalsize},
+  skip=4pt,
+  indention=0pt
+}
 {% if code_engine == "minted" %}
 \usepackage{minted}
 \setminted{
@@ -211,6 +220,9 @@
 \counterwithin{figure}{section}
 \counterwithin{table}{section}
 \counterwithin{equation}{section}
+{% if code_enabled and code_engine != "minted" %}
+\AtBeginDocument{\counterwithin{lstlisting}{section}}
+{% endif %}
 {% endif %}
 
 % ========== Page numbering ==========
@@ -338,6 +350,7 @@
   \renewcommand{\refname}{ {{- labels.bibliography_name | trim -}} }
   \renewcommand{\figurename}{ {{- labels.figure_name | trim -}} }
   \renewcommand{\tablename}{ {{- labels.table_name | trim -}} }
+  \renewcommand{\lstlistingname}{ {{- labels.listing_name | trim -}} }
 }
 
 % ========== "Continued / End of table" support ==========

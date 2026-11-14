@@ -732,6 +732,16 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
         format!("{} {}", app_label, to_title_case_if_upper(title))
     };
 
+    let listing_reset = if cfg.code.enabled && !cfg.code.engine.eq_ignore_ascii_case("minted") {
+        format!(
+            "\\setcounter{{lstlisting}}{{0}}\n\
+             \\renewcommand{{\\thelstlisting}}{{{}.\\arabic{{lstlisting}}}}\n",
+            letter
+        )
+    } else {
+        String::new()
+    };
+
     // Reset counters and rebind \the<cnt> to the appendix letter.
     // Includes subsections so sub-headings are numbered А.1, А.2, ...
     out.push_str(&format!(
@@ -748,9 +758,15 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
          \\renewcommand{{\\theequation}}{{{}.\\arabic{{equation}}}}\n\
          \\renewcommand{{\\thesubsection}}{{{}.\\arabic{{subsection}}}}\n\
          \\renewcommand{{\\thesubsubsection}}{{{}.\\arabic{{subsection}}.\\arabic{{subsubsection}}}}\n\
+         {}\
          {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n",
         escape_latex(&toc_entry),
-        letter, letter, letter, letter, letter,
+        letter,
+        letter,
+        letter,
+        letter,
+        letter,
+        listing_reset,
         escape_latex(&app_label)
     ));
 
