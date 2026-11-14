@@ -4,25 +4,41 @@
 //! caption labels are read from the config; this module contains no
 //! natural-language strings.
 //!
-//! ## Table column merging
+//! ## Table cell merging
 //!
-//! A GFM table cell whose trimmed content is exactly `<<` is a merge
-//! marker: it extends the horizontal span (`colspan`) of the cell to its
-//! left by one. The marker works in any row (header or data), and any
-//! number of consecutive `<<` cells chains into a single wide cell:
+//! Two GFM-table cell markers are recognised after trimming:
+//!
+//! * `<<` — **column** continuation: extends the horizontal span
+//!   (`colspan`) of the cell to its left by one. Chains.
+//! * `^^` — **row** continuation: extends the vertical span (`rowspan`)
+//!   of the cell above by one. Chains. Works in any row (header or
+//!   data). The `^^` cell itself becomes empty in the output; the
+//!   content lives in the *starting* cell of the multirow.
 //!
 //! ```markdown
-//! | Header A | Header B | Header C |
-//! |----------|----------|----------|
-//! | one      | <<       | three    |
-//! | p        | q        | <<       |
-//! | <<       | <<       | <<       |
+//! | H1 | H2 | H3 |
+//! |----|----|----|
+//! | a  | << | c  |
+//! | ^^ | << | d  |
+//! | e  | f  | ^^ |
 //! ```
 //!
-//! LaTeX side: merged cells are emitted with
-//! `\multicolumn{N}{<spec>}{...}`, where `<spec>` is a tabularx-compatible
-//! `X`-column with a `\hsize` adjustment so the merged cell occupies the
-//! same total width as the columns it replaced. No extra packages needed.
+//! LaTeX side:
+//!
+//! * merged **columns** → `\multicolumn{N}{<spec>}{...}` where `<spec>`
+//!   is a tabularx-compatible `X` column with `\hsize` inflated so the
+//!   merged cell occupies the same total width as the columns it
+//!   replaced;
+//! * merged **rows** → `\multirow{N}{=}{...}` (the `=` form uses the
+//!   column's natural width and respects `\multirowsetup`);
+//! * horizontal rules that would cut through a multirow are emitted as
+//!   `\cline{a-b}` instead of `\hline`, skipping the affected columns.
+//!
+//! Requires `\usepackage{multirow}` (and preferably
+//! `\renewcommand{\multirowsetup}{\centering}`) in the preamble.
+//!
+//! Header rowspans are not supported — a warning is emitted if the user
+//! tries; use body rows to simulate multi-row headers.
 
 use crate::config::Config;
 use anyhow::Result;
@@ -30,6 +46,7 @@ use comrak::nodes::{AstNode, NodeCodeBlock, NodeLink, NodeValue};
 use comrak::options::Options;
 use comrak::{parse_document, Arena};
 use regex::Regex;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Ctx {
@@ -46,13 +63,18 @@ struct PendingTableCaption {
     new_page: bool,
 }
 
-/// One logical cell of a table after `<<`-continuations have been folded
-/// into their left neighbour: `(colspan, content)`.
-type MergedCell = (usize, String);
+/// One logical table cell after `<<`/`^^` folding.
+#[derive(Clone)]
+struct Cell {
+    colspan: usize,
+    rowspan: usize,
+    content: String,
+    /// True for `^^` continuation cells: emit an empty cell, don't touch
+    /// content.
+    phantom: bool,
+}
 
-/// One row of logical cells. `Σ span` always equals the physical column
-/// count declared by the markdown table.
-type MergedRow = Vec<MergedCell>;
+type Row = Vec<Cell>;
 
 pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let arena = Arena::new();
@@ -274,7 +296,6 @@ fn render_node<'a>(
                 }
             }
             if has_image && !has_text {
-                // Lone image in its own paragraph → real figure float.
                 for child in node.children() {
                     if let NodeValue::Image(link) = &child.data.borrow().value {
                         render_image_block(child, link, out, cfg)?;
@@ -802,45 +823,266 @@ fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, Strin
     (label, width, caption)
 }
 
-/// Renders a GFM table into LaTeX, honouring `<<`-merge markers (see
-/// module-level docs) and the `#tbl:` caption directive.
+// ─────────────────────────────────────────────────────────────────────────
+// Table rendering with `<<` / `^^` folding.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Folds `<<`-column markers into their left neighbour.
+fn merge_columns(raw: &[String]) -> Row {
+    let mut result: Row = Vec::with_capacity(raw.len());
+    for cell in raw {
+        let s = cell.trim();
+        if s == "<<" {
+            if let Some(last) = result.last_mut() {
+                last.colspan += 1;
+            } else {
+                eprintln!("warning: '<<' in first cell of a table row has nothing to merge with");
+                result.push(Cell {
+                    colspan: 1,
+                    rowspan: 1,
+                    content: String::new(),
+                    phantom: false,
+                });
+            }
+        } else {
+            result.push(Cell {
+                colspan: 1,
+                rowspan: 1,
+                content: cell.clone(),
+                phantom: false,
+            });
+        }
+    }
+    result
+}
+
+/// Folds `^^`-row markers into the cell above (same physical column
+/// range). Requires matching `colspan` on the continuation cell.
+fn fold_rowspans(rows: &mut Vec<Row>) {
+    let mut active: HashMap<usize, (usize, usize)> = HashMap::new();
+    // active[physical_col] = (start_row, start_cell_idx)
+
+    for i in 0..rows.len() {
+        let mut col = 0usize;
+        let row_len = rows[i].len();
+        for j in 0..row_len {
+            let cspan = rows[i][j].colspan;
+            let is_marker = !rows[i][j].phantom && rows[i][j].content.trim() == "^^";
+
+            if is_marker {
+                let mut target: Option<(usize, usize)> = None;
+                let mut consistent = true;
+                for c in col..(col + cspan) {
+                    match active.get(&c) {
+                        Some(&(sr, sc)) => {
+                            if let Some(t) = target {
+                                if t != (sr, sc) {
+                                    consistent = false;
+                                    break;
+                                }
+                            } else {
+                                target = Some((sr, sc));
+                            }
+                        }
+                        None => {
+                            consistent = false;
+                            break;
+                        }
+                    }
+                }
+
+                if consistent && target.is_some() {
+                    let (sr, sc) = target.unwrap();
+                    rows[sr][sc].rowspan += 1;
+                    rows[i][j].phantom = true;
+                    rows[i][j].content.clear();
+                    // `active[c]` stays pointing at (sr, sc) so subsequent
+                    // `^^` cells can chain through this row.
+                } else {
+                    eprintln!(
+                        "warning: '^^' in table row {} (col {}) cannot be resolved; \
+                         treating as empty cell",
+                        i, col
+                    );
+                    rows[i][j].content.clear();
+                    for c in col..(col + cspan) {
+                        active.insert(c, (i, j));
+                    }
+                }
+            } else {
+                for c in col..(col + cspan) {
+                    active.insert(c, (i, j));
+                }
+            }
+            col += cspan;
+        }
+    }
+}
+
+/// Physical columns whose multirow would be cut by the `\hline` *after*
+/// row `i`. Those columns are replaced by `\cline` ranges in the output.
+fn active_columns_at_hline(rows: &[Row], i: usize, ncols: usize) -> Vec<usize> {
+    let mut active = vec![false; ncols];
+    for (s, row) in rows.iter().enumerate() {
+        if s > i {
+            break;
+        }
+        let mut c = 0usize;
+        for cell in row {
+            if !cell.phantom && cell.rowspan >= 2 && s + cell.rowspan - 1 > i {
+                for k in c..(c + cell.colspan).min(ncols) {
+                    active[k] = true;
+                }
+            }
+            c += cell.colspan;
+        }
+    }
+    active
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| **a)
+        .map(|(k, _)| k)
+        .collect()
+}
+
+/// Builds a `\multicolumn` column spec for `tabularx`/`xltabular` that
+/// makes a cell spanning `n` columns occupy exactly the horizontal space
+/// of those `n` `Y`-columns (`Y = >{\centering\arraybackslash}X`):
 ///
-/// The column-spec of the table is always `|Y|Y|…|Y|` (`ncols` times).
-/// A logical cell with `span > 1` is emitted as
-/// `\multicolumn{span}{<cols>}{content}` where `<cols>` is a
-/// tabularx-compatible `X` column whose `\hsize` is inflated so that the
-/// merged cell occupies the same total width as the columns it replaced:
-///
-///   `n·\hsize + (n−1)·2\tabcolsep + (n−1)·\arrayrulewidth`
-///
-/// The leading `|` of the multicolumn spec is added only for the first
-/// cell of the row, and the trailing `|` is always present — this matches
-/// how the outer `|Y|Y|…|Y|` spec distributes vertical rules between
-/// cells.
+///   total = n·\hsize + (n−1)·2\tabcolsep + (n−1)·\arrayrulewidth
+fn multicolumn_spec(n: usize) -> String {
+    let ts = (n - 1) * 2;
+    let rw = n - 1;
+    format!(
+        "> {{\\hsize=\\dimexpr {n}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\\centering\\arraybackslash}}X",
+        n = n,
+        ts = ts,
+        rw = rw,
+    )
+}
+
+/// Emits one logical cell (may be colspan/rowspan/phantom).
+fn emit_cell(cell: &Cell, is_first: bool) -> String {
+    // Phantom cell with colspan 1 — just an empty cell.
+    if cell.phantom && cell.colspan == 1 {
+        return String::new();
+    }
+
+    let inner = if cell.phantom {
+        String::new()
+    } else if cell.rowspan > 1 {
+        format!("\\multirow{{{}}}{{=}}{{{}}}", cell.rowspan, cell.content)
+    } else {
+        cell.content.clone()
+    };
+
+    if cell.colspan > 1 {
+        let colspec = multicolumn_spec(cell.colspan);
+        let spec = if is_first {
+            format!("|{}|", colspec)
+        } else {
+            format!("{}|", colspec)
+        };
+        format!("\\multicolumn{{{}}}{{{}}}{{{}}}", cell.colspan, spec, inner)
+    } else {
+        inner
+    }
+}
+
+/// Emits a whole logical row as `a & b & c`.
+fn emit_row(row: &Row) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(row.len());
+    for (i, cell) in row.iter().enumerate() {
+        parts.push(emit_cell(cell, i == 0));
+    }
+    parts.join(" & ")
+}
+
+/// Same as `emit_row` but wraps each logical cell's content in `\textbf`.
+fn emit_header_row(row: &Row) -> String {
+    let bold: Row = row
+        .iter()
+        .map(|c| Cell {
+            colspan: c.colspan,
+            rowspan: c.rowspan,
+            content: if c.phantom {
+                String::new()
+            } else {
+                format!("\\textbf{{{}}}", c.content)
+            },
+            phantom: c.phantom,
+        })
+        .collect();
+    emit_row(&bold)
+}
+
+/// Emits the trailing rule for row `i`:
+/// * full `\hline` if no multirow crosses it;
+/// * one or more `\cline{a-b}` covering the non-crossed ranges otherwise.
+fn emit_trailing_rule(
+    out: &mut String,
+    processed: &[Row],
+    row_idx: usize,
+    ncols: usize,
+) {
+    let skip = active_columns_at_hline(processed, row_idx, ncols);
+    if skip.is_empty() {
+        out.push_str(" \\\\\n  \\hline\n");
+        return;
+    }
+
+    let skip_set: HashSet<usize> = skip.iter().copied().collect();
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    let mut k = 0usize;
+    while k < ncols {
+        if skip_set.contains(&k) {
+            k += 1;
+        } else {
+            let start = k;
+            while k < ncols && !skip_set.contains(&k) {
+                k += 1;
+            }
+            ranges.push((start, k - 1));
+        }
+    }
+
+    out.push_str(" \\\\\n");
+    for (s, e) in ranges {
+        out.push_str(&format!("  \\cline{{{}-{}}}\n", s + 1, e + 1));
+    }
+}
+
 fn render_table<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
     meta: Option<PendingTableCaption>,
     cfg: &Config,
 ) -> Result<()> {
-    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut raw_rows: Vec<Vec<String>> = Vec::new();
     for row_node in node.children() {
         if let NodeValue::TableRow(_) = &row_node.data.borrow().value {
             let mut cells = Vec::new();
             for cell_node in row_node.children() {
                 if let NodeValue::TableCell = &cell_node.data.borrow().value {
-                    let mut cell_latex = String::new();
-                    render_inline(cell_node, &mut cell_latex, cfg)?;
-                    cells.push(cell_latex);
+                    // ВАЖНО: сначала получаем "сырой" текст, чтобы не дать
+                    // escape_latex превратить `^^` в `\textasciicircum{}`.
+                    let raw_text = extract_text(cell_node).trim().to_string();
+                    if raw_text == "<<" || raw_text == "^^" {
+                        cells.push(raw_text);
+                    } else {
+                        let mut cell_latex = String::new();
+                        render_inline(cell_node, &mut cell_latex, cfg)?;
+                        cells.push(cell_latex);
+                    }
                 }
             }
-            rows.push(cells);
+            raw_rows.push(cells);
         }
     }
-    if rows.is_empty() {
+    if raw_rows.is_empty() {
         return Ok(());
     }
-    let ncols = rows[0].len().max(1);
+    let ncols = raw_rows[0].len().max(1);
     let baseline = compute_baseline(&cfg.style.table_font_size);
 
     let (caption_latex, label_latex, breakable, new_page) = match meta {
@@ -853,8 +1095,22 @@ fn render_table<'a>(
         None => (String::new(), String::new(), true, false),
     };
 
-    // Fold `<<`-continuation cells into their left neighbour.
-    let processed: Vec<MergedRow> = rows.iter().map(|r| merge_cells(r)).collect();
+    // Fold `<<` then `^^`.
+    let mut processed: Vec<Row> = raw_rows.iter().map(|r| merge_columns(r)).collect();
+    fold_rowspans(&mut processed);
+
+    if processed
+        .first()
+        .map_or(false, |r| r.iter().any(|c| c.rowspan > 1))
+    {
+        eprintln!(
+            "warning: multirow in table header is not supported; \
+             header will be emitted without rowspan"
+        );
+        for c in processed[0].iter_mut() {
+            c.rowspan = 1;
+        }
+    }
 
     if breakable {
         if new_page {
@@ -902,18 +1158,19 @@ fn render_table<'a>(
         out.push_str("  \\endlastfoot\n");
 
         let total_data = processed.len().saturating_sub(1);
-        for (idx, row) in processed.iter().skip(1).enumerate() {
-            out.push_str("  ");
+        for (data_idx, row) in processed.iter().skip(1).enumerate() {
+            let source_row = data_idx + 1;
             let mut row_data = row.clone();
-            // `\label{ltend:…}` marks the page of the LAST data row so the
-            // "Continued / End of table" header can choose the right label.
-            if idx + 1 == total_data {
+            if data_idx + 1 == total_data {
                 if let Some(last_cell) = row_data.last_mut() {
-                    last_cell.1.push_str("\\label{ltend:\\arabic{ltid}}");
+                    if !last_cell.phantom {
+                        last_cell.content.push_str("\\label{ltend:\\arabic{ltid}}");
+                    }
                 }
             }
+            out.push_str("  ");
             out.push_str(&emit_row(&row_data));
-            out.push_str(" \\\\\n  \\hline\n");
+            emit_trailing_rule(out, &processed, source_row, ncols);
         }
 
         out.push_str("  \\end{xltabular}\n  }\n\n");
@@ -937,10 +1194,11 @@ fn render_table<'a>(
         out.push_str("    ");
         out.push_str(&emit_header_row(&processed[0]));
         out.push_str(" \\\\\n  \\hline\\hline\n");
-        for row in processed.iter().skip(1) {
+        for (data_idx, row) in processed.iter().skip(1).enumerate() {
+            let source_row = data_idx + 1;
             out.push_str("    ");
             out.push_str(&emit_row(row));
-            out.push_str(" \\\\\n  \\hline\n");
+            emit_trailing_rule(out, &processed, source_row, ncols);
         }
         out.push_str("  \\end{tabularx}\n  }\n");
         if !cfg.style.table_caption_above {
@@ -954,81 +1212,6 @@ fn render_table<'a>(
         out.push_str("\\end{table}\n\n");
     }
     Ok(())
-}
-
-/// Folds `<<`-continuation cells into their left neighbour.
-///
-/// A cell is a continuation if its trimmed content is exactly `<<`.
-/// Continuations increment the span of the previous logical cell; a
-/// leading `<<` (nothing to merge with) produces a warning and an empty
-/// cell of span 1.
-fn merge_cells(row: &[String]) -> MergedRow {
-    let mut result: MergedRow = Vec::with_capacity(row.len());
-    for cell in row {
-        if cell.trim() == "<<" {
-            if let Some(last) = result.last_mut() {
-                last.0 += 1;
-            } else {
-                eprintln!("warning: '<<' in first cell of a table row has nothing to merge with");
-                result.push((1, String::new()));
-            }
-        } else {
-            result.push((1, cell.clone()));
-        }
-    }
-    result
-}
-
-/// Emits one logical row of cells as `a & b & c`.
-fn emit_row(row: &MergedRow) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(row.len());
-    for (i, (span, content)) in row.iter().enumerate() {
-        if *span <= 1 {
-            parts.push(content.clone());
-            continue;
-        }
-        let colspec = multicolumn_spec(*span);
-        // The leading `|` of the multicolumn spec must appear only on the
-        // first cell of the row; for subsequent cells it is provided by
-        // the previous cell's trailing `|`.
-        let spec = if i == 0 {
-            format!("|{}|", colspec)
-        } else {
-            format!("{}|", colspec)
-        };
-        parts.push(format!(
-            "\\multicolumn{{{}}}{{{}}}{{{}}}",
-            span, spec, content
-        ));
-    }
-    parts.join(" & ")
-}
-
-/// Same as `emit_row`, but wraps every logical cell in `\textbf{...}`.
-fn emit_header_row(row: &MergedRow) -> String {
-    let bold: MergedRow = row
-        .iter()
-        .map(|(span, content)| (*span, format!("\\textbf{{{}}}", content)))
-        .collect();
-    emit_row(&bold)
-}
-
-/// Builds a `\multicolumn` column spec for `tabularx`/`xltabular` that
-/// makes a cell spanning `n` columns occupy exactly the horizontal space
-/// of those `n` `Y`-columns (where `Y = >{\centering\arraybackslash}X`).
-///
-///   total = n·\hsize + (n−1)·2\tabcolsep + (n−1)·\arrayrulewidth
-///
-/// (each of the `n−1` internal gaps was `2\tabcolsep + \arrayrulewidth`).
-fn multicolumn_spec(n: usize) -> String {
-    let ts = (n - 1) * 2;
-    let rw = n - 1;
-    format!(
-        "> {{\\hsize=\\dimexpr {n}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\\centering\\arraybackslash}}X",
-        n = n,
-        ts = ts,
-        rw = rw,
-    )
 }
 
 fn extract_text<'a>(node: &'a AstNode<'a>) -> String {
