@@ -5,6 +5,7 @@ cwd = os.path.dirname(os.path.dirname(__file__))
 files = [
     'src/config.rs',
     'src/images.rs',
+    'src/log.rs',
     'src/main.rs',
     'src/markdown.rs',
     'src/template.rs',
