@@ -23,7 +23,6 @@ university = "Сибирский федеральный университет"
 # means "the profile directory itself". Leave it out to use the default.
 # `base` and all `[doc_types]` paths are resolved relative to `dir`.
 [templates]
-dir  = "."
 base = "base.tex.tera"
 
 # ── Document types → title-page templates ──────────────────────────────

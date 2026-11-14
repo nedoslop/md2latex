@@ -1,6 +1,6 @@
-//! Command-line entry point: loads config, prepares images, converts
-//! Markdown to LaTeX, renders the final `.tex`, and optionally compiles it
-//! with `xelatex`.
+//! Command-line entry point: loads config from the Markdown frontmatter,
+//! prepares images, converts Markdown to LaTeX, renders the final `.tex`,
+//! and optionally compiles it with `xelatex`.
 
 mod config;
 mod images;
@@ -18,17 +18,49 @@ use std::time::{Duration, Instant};
 #[command(name = "md2latex-gost")]
 #[command(about = "Markdown -> LaTeX converter with GOST / STU formatting")]
 struct Cli {
-    #[arg(short, long, default_value = "md2latex.toml")]
-    config: PathBuf,
+    /// Input Markdown file (its YAML frontmatter selects the profile,
+    /// document type, title-page fields, etc.)
+    input: PathBuf,
+
+    /// Output directory for `main.tex` (and `main.pdf` when `--compile` is set).
+    #[arg(short, long, default_value = "out")]
+    output_dir: PathBuf,
+
+    /// Directory that contains institution profiles. Overrides
+    /// `$MD2LATEX_PROFILES_DIR`. When omitted, the lookup tries
+    /// `$MD2LATEX_PROFILES_DIR`, `<md_dir>/profiles`, `<cwd>/profiles`.
+    #[arg(long)]
+    profiles_dir: Option<PathBuf>,
+
+    /// Compile the generated `.tex` to PDF with xelatex (+ biber).
+    #[arg(long)]
+    compile: bool,
 }
 
 fn main() -> Result<()> {
-    let total_start = Instant::now();
+    // Load .env (if any) so frontmatter `${VAR}` references can resolve.
+    // Shell-exported vars win — dotenvy only fills what isn't already set.
+    let _ = dotenvy::dotenv();
 
+    let total_start = Instant::now();
     let cli = Cli::parse();
 
+    let md_path = cli.input.clone();
+    let md_content = fs::read_to_string(&md_path)
+        .with_context(|| format!("failed to read {}", md_path.display()))?;
+
+    // ── Config: frontmatter (MD) + profile.toml + CLI ───────────────────
     let t = Instant::now();
-    let cfg = config::Config::from_file(&cli.config).context("failed to load configuration")?;
+    let (cfg, md_body) = config::Config::from_markdown(
+        &md_path,
+        &md_content,
+        config::CliOverrides {
+            output_dir: cli.output_dir.clone(),
+            compile_pdf: cli.compile,
+            profiles_dir: cli.profiles_dir.clone(),
+        },
+    )
+    .context("failed to load configuration")?;
     let config_time = t.elapsed();
 
     if !cfg.project.profile.is_empty() {
@@ -39,17 +71,11 @@ fn main() -> Result<()> {
     }
 
     let t = Instant::now();
-    let md_path = PathBuf::from(&cfg.project.input);
-    let md_content = fs::read_to_string(&md_path)
-        .with_context(|| format!("failed to read {}", md_path.display()))?;
-    let read_time = t.elapsed();
-
     let out_dir = PathBuf::from(&cfg.project.output_dir);
     fs::create_dir_all(&out_dir)?;
 
-    let t = Instant::now();
     let md_prepared = images::prepare_images(
-        &md_content,
+        &md_body,
         &md_path,
         &out_dir,
         cfg.images.convert_to.as_deref(),
@@ -87,7 +113,6 @@ fn main() -> Result<()> {
     print_timings(
         &cfg,
         config_time,
-        read_time,
         images_time,
         md_time,
         render_time,
@@ -103,7 +128,6 @@ fn main() -> Result<()> {
 fn print_timings(
     cfg: &config::Config,
     config_time: Duration,
-    read_time: Duration,
     images_time: Duration,
     md_time: Duration,
     render_time: Duration,
@@ -114,7 +138,6 @@ fn print_timings(
     println!();
     println!("Timings:");
     println!("  config:        {:>10}", fmt_duration(config_time));
-    println!("  read markdown: {:>10}", fmt_duration(read_time));
     println!("  images:        {:>10}", fmt_duration(images_time));
     println!("  md → latex:    {:>10}", fmt_duration(md_time));
     println!("  render .tex:   {:>10}", fmt_duration(render_time));

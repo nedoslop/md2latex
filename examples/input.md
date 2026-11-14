@@ -1,3 +1,30 @@
+---
+# ─────────────────────────────────────────────────────────────────────────
+# Per-document metadata. Everything institution-wide (fonts, margins,
+# headings, labels) lives in profiles/sibfu/profile.toml — this file only
+# selects a profile and provides values for THIS document.
+#
+# Private values (student names, etc.) live in the environment:
+#   SUPERVISOR_NAME, STUDENT_NAME
+# A `.env` next to this file (or in CWD) is loaded automatically.
+# ─────────────────────────────────────────────────────────────────────────
+project:
+  profile: sibfu          # plain name → searched in ./profiles, <md_dir>/profiles, etc.
+  doc_type: course_work   # selects title template from profile.toml's [doc_types]
+
+title:
+  institute: "Институт космических и информационных технологий"
+  department: "Кафедра систем искусственного интеллекта"
+  topic: "Разработка конвертера Markdown в LaTeX"
+  supervisor: "${SUPERVISOR_NAME:-П. П. Петров}"
+  year: "2026"
+  city: "Красноярск"
+  students:
+    - group: "ПИ21-01Б"
+      student_id: "987654321"
+    - name: "${STUDENT_NAME:-И. И. Ветров}"
+---
+
 # ВВЕДЕНИЕ
 
 Курсовая работа посвящена разработке конвертера, который преобразует
@@ -110,14 +137,8 @@ Markdown для содержания и автоматической генер�
 | Данные 2 | 456      |
 | Данные 3 | 789      |
 | Данные 1 | 123      |
-| Данные 2 | 456      |
-| Данные 3 | 789      |
-| Данные 1 | 123      |
-| Данные 2 | 456      |
-| Данные 3 | 789      |
-| Данные 1 | 123      |
-| Данные 2 | 456      |
-| Данные 3 | 789      |
+
+![Тест](test.png "#fig:test width=0.5")
 
 ```cpp
 int main() {

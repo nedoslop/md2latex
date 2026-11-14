@@ -37,9 +37,6 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
 
     let mut ctx = TeraContext::new();
     fill_title_context(&mut ctx, cfg);
-    // `extra` is passed through verbatim: whatever the user puts in the
-    // `[extra]` table of the TOML config is available as `extra.*` inside
-    // every template.
     ctx.insert("extra", &cfg.extra);
     let title_rendered = tera.render("title.tex.tera", &ctx)?;
 
@@ -88,15 +85,17 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
 
     ctx.insert("images_interpolate", &cfg.images.interpolate);
 
-    // Biblatex
+    // Biblatex. A missing *or empty* `bib_file` (the common "user didn't
+    // bother" case in frontmatter) falls back to `refs.bib`.
+    let bib_file = cfg
+        .project
+        .bib_file
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("refs.bib");
     ctx.insert("use_biblatex", &cfg.bibliography.use_biblatex);
-    ctx.insert(
-        "bib_file",
-        &cfg.project
-            .bib_file
-            .clone()
-            .unwrap_or_else(|| "refs.bib".into()),
-    );
+    ctx.insert("bib_file", &bib_file);
 
     // Lists
     ctx.insert("itemize_label", &cfg.lists.itemize_label);
@@ -134,8 +133,6 @@ pub fn render_document(cfg: &Config, body: &str) -> Result<String> {
         .context("failed to render base.tex.tera")
 }
 
-/// "Author(s)" string for PDF metadata: either a single student or the
-/// comma-separated list of all students' names.
 fn collect_author(t: &crate::config::Title) -> String {
     if !t.student.trim().is_empty() {
         return t.student.clone();
@@ -149,10 +146,6 @@ fn collect_author(t: &crate::config::Title) -> String {
     names.join(", ")
 }
 
-/// Fills the title-page context with the typed domain fields.
-///
-/// Nothing institution-specific is inserted here — those live in the
-/// template and can be overridden via `extra.*`.
 fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     let t = &cfg.title;
     let fill = cfg.style.title_page_fill_empty;
@@ -212,8 +205,6 @@ fn fill_title_context(ctx: &mut TeraContext, cfg: &Config) {
     ctx.insert("city", &t.city);
 }
 
-/// Replaces an empty string with a neutral placeholder rule when
-/// `title_page_fill_empty` is enabled.
 fn fill_or_blank(value: &str, fill: bool) -> String {
     if value.trim().is_empty() && fill {
         "\\rule{3.5cm}{0.4pt}".to_string()
