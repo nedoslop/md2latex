@@ -1,6 +1,10 @@
 //! Command-line entry point: loads config from the Markdown frontmatter,
 //! prepares images, converts Markdown to LaTeX, renders the final `.tex`,
 //! and optionally compiles it with `xelatex`.
+//!
+//! External tools (`xelatex`, `biber`) run **quietly by default**: their
+//! stdout/stderr is captured and dumped to the console only if they fail.
+//! Pass `--verbose` to stream the full log live.
 
 mod config;
 mod images;
@@ -10,6 +14,7 @@ mod template;
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -35,6 +40,12 @@ struct Cli {
     /// Compile the generated `.tex` to PDF with xelatex (+ biber).
     #[arg(long)]
     compile: bool,
+
+    /// Stream xelatex/biber output to the console. Without this flag,
+    /// external tools run quietly; their captured output is printed
+    /// only if they fail.
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 fn main() -> Result<()> {
@@ -104,7 +115,7 @@ fn main() -> Result<()> {
     let pdf_time = if cfg.project.compile_pdf {
         let shell_escape = cfg.code.enabled && cfg.code.engine.eq_ignore_ascii_case("minted");
         let t = Instant::now();
-        compile_pdf(&tex_path, shell_escape)?;
+        compile_pdf(&tex_path, shell_escape, cli.verbose)?;
         Some(t.elapsed())
     } else {
         None
@@ -167,9 +178,11 @@ fn fmt_duration(d: Duration) -> String {
 
 /// Runs `xelatex` (and `biber` if needed), then `xelatex` twice more to
 /// stabilise the table of contents and cross-references.
-fn compile_pdf(tex_path: &Path, shell_escape: bool) -> Result<()> {
+///
+/// Unless `verbose` is set, the tools run quietly: their stdout/stderr
+/// is captured and only dumped to the console if they fail.
+fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) -> Result<()> {
     let dir = tex_path.parent().unwrap();
-    println!("running xelatex...");
 
     let mut args: Vec<&str> = vec!["-interaction=nonstopmode", "-halt-on-error"];
     if shell_escape {
@@ -177,34 +190,81 @@ fn compile_pdf(tex_path: &Path, shell_escape: bool) -> Result<()> {
     }
     args.push("main.tex");
 
-    run_latex(dir, &args)?;
+    println!("xelatex [1/3]...");
+    run_tool("xelatex", &args, dir, verbose)
+        .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
 
     if tex_path.with_extension("bcf").exists() {
-        println!("running biber...");
-        Command::new("biber")
-            .arg("main")
-            .current_dir(dir)
-            .status()
-            .context("biber not found or failed")?;
+        println!("biber...");
+        run_tool("biber", &["main"], dir, verbose).context("biber not found or failed")?;
     }
 
-    run_latex(dir, &args)?;
-    // Third pass stabilises page numbers in the ToC and \ref{} when the
-    // ToC is long.
-    run_latex(dir, &args)?;
+    println!("xelatex [2/3]...");
+    run_tool("xelatex", &args, dir, verbose)
+        .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
+
+    println!("xelatex [3/3]...");
+    run_tool("xelatex", &args, dir, verbose)
+        .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
 
     println!("PDF ready:     {}", dir.join("main.pdf").display());
     Ok(())
 }
 
-fn run_latex(dir: &Path, args: &[&str]) -> Result<()> {
-    let status = Command::new("xelatex")
+/// Runs an external tool.
+///
+/// * `verbose = true`  — stdout/stderr are inherited (stream live).
+/// * `verbose = false` — output is captured; on failure it's replayed to
+///   stderr so the user still sees the real TeX error, not just a bare
+///   "process exited with 1".
+fn run_tool(name: &str, args: &[&str], dir: &Path, verbose: bool) -> Result<()> {
+    if verbose {
+        let status = Command::new(name)
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .with_context(|| format!("failed to spawn {}", name))?;
+        if !status.success() {
+            anyhow::bail!("{} exited with {}", name, status);
+        }
+        return Ok(());
+    }
+
+    let output = Command::new(name)
         .args(args)
         .current_dir(dir)
-        .status()
-        .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
-    if !status.success() {
-        anyhow::bail!("xelatex exited with an error");
+        .output()
+        .with_context(|| format!("failed to spawn {}", name))?;
+
+    if output.status.success() {
+        return Ok(());
     }
-    Ok(())
+
+    // Failure: replay the captured log on stderr so the user can actually
+    // see what went wrong. xelatex writes errors to stdout; biber mostly
+    // to stderr — dump whatever exists.
+    let mut wrote = false;
+    if !output.stdout.is_empty() {
+        eprintln!("─── {} stdout ───", name);
+        let _ = std::io::stderr().write_all(&output.stdout);
+        wrote = true;
+    }
+    if !output.stderr.is_empty() {
+        if wrote {
+            eprintln!();
+        }
+        eprintln!("─── {} stderr ───", name);
+        let _ = std::io::stderr().write_all(&output.stderr);
+        wrote = true;
+    }
+    if !wrote {
+        eprintln!("({} produced no output)", name);
+    }
+
+    anyhow::bail!(
+        "{} exited with {} — full log above; \
+         rerun with --verbose to stream it live",
+        name,
+        output.status
+    )
 }
