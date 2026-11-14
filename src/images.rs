@@ -142,26 +142,17 @@ pub fn prepare_images(
                 match convert_image(&full_src, &dest, &target_ext, dpi) {
                     Ok(()) => final_name.clone(),
                     Err(e) => {
-                        eprintln!(
-                            "warning: failed to convert {}: {}",
-                            full_src.display(),
-                            e
-                        );
+                        eprintln!("warning: failed to convert {}: {}", full_src.display(), e);
                         // Fallback: copy with original extension, uniquified.
                         let mut fb = 1;
                         let mut fallback_base = format!("{}{}", sanitize(&stem), ext);
                         while used_names.contains(&fallback_base) {
-                            fallback_base =
-                                format!("{}_{}{}", sanitize(&stem), fb, ext);
+                            fallback_base = format!("{}_{}{}", sanitize(&stem), fb, ext);
                             fb += 1;
                         }
                         let fallback = images_out.join(&fallback_base);
                         if let Err(e2) = fs::copy(&full_src, &fallback) {
-                            eprintln!(
-                                "warning: failed to copy {}: {}",
-                                full_src.display(),
-                                e2
-                            );
+                            eprintln!("warning: failed to copy {}: {}", full_src.display(), e2);
                             return caps[0].to_string();
                         }
                         fallback_base
