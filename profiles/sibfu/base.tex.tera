@@ -58,6 +58,7 @@
 \usepackage{tabularx}
 \usepackage{xltabular}
 \usepackage{multirow}
+\usepackage{hhline}
 \renewcommand{\multirowsetup}{\centering}
 \newcolumntype{Y}{>{\centering\arraybackslash}X}
 \renewcommand{\arraystretch}{1.2}

@@ -774,14 +774,12 @@ fn render_image_inline(link: &NodeLink, out: &mut String, cfg: &Config) {
     let src = &link.url;
     let (_, width, _) = parse_image_title(&link.title, "\\linewidth");
 
-    let width_spec = if width.contains("\\textwidth")
-        || width.contains("\\linewidth")
-        || width.contains('%')
-    {
-        width
-    } else {
-        format!("{}\\linewidth", width)
-    };
+    let width_spec =
+        if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') {
+            width
+        } else {
+            format!("{}\\linewidth", width)
+        };
     let interpolate_opt = if cfg.images.interpolate {
         ",interpolate=true"
     } else {
@@ -894,7 +892,7 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
                 if consistent && target.is_some() {
                     let (sr, sc) = target.unwrap();
                     let target_cell = &rows[sr][sc];
-                    
+
                     // Проверяем, не пытаемся ли мы присоединить `^^` к ячейке,
                     // которая уже объединена по горизонтали (`<<`), при этом
                     // справа от `^^` в текущей строке есть контент.
@@ -902,7 +900,7 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
                     if target_cell.colspan > 1 {
                         let target_start: usize = rows[sr].iter().take(sc).map(|c| c.colspan).sum();
                         let target_end = target_start + target_cell.colspan;
-                        
+
                         let mut cur_c = 0;
                         for (k, cell) in rows[i].iter().enumerate() {
                             if k != j && cur_c < target_end && cur_c + cell.colspan > target_start {
@@ -1051,12 +1049,7 @@ fn emit_header_row(row: &Row) -> String {
 /// Emits the trailing rule for row `i`:
 /// * full `\hline` if no multirow crosses it;
 /// * one or more `\cline{a-b}` covering the non-crossed ranges otherwise.
-fn emit_trailing_rule(
-    out: &mut String,
-    processed: &[Row],
-    row_idx: usize,
-    ncols: usize,
-) {
+fn emit_trailing_rule(out: &mut String, processed: &[Row], row_idx: usize, ncols: usize) {
     let skip = active_columns_at_hline(processed, row_idx, ncols);
     if skip.is_empty() {
         out.push_str(" \\\\\n  \\hline\n");
@@ -1116,6 +1109,7 @@ fn render_table<'a>(
     }
     let ncols = raw_rows[0].len().max(1);
     let baseline = compute_baseline(&cfg.style.table_font_size);
+    let double_rule = format!("\\hhline{{|{}|}}", "=".repeat(ncols));
 
     let (caption_latex, label_latex, breakable, new_page) = match meta {
         Some(m) => (
@@ -1180,11 +1174,11 @@ fn render_table<'a>(
 
         out.push_str("  \\hline\n  ");
         out.push_str(&header);
-        out.push_str(" \\\\\n  \\hline\\hline\n  \\endfirsthead\n");
+        out.push_str(&format!(" \\\\\n  {}\n  \\endfirsthead\n", double_rule));
 
         out.push_str("  \\hline\n  ");
         out.push_str(&header);
-        out.push_str(" \\\\\n  \\hline\\hline\n  \\endhead\n");
+        out.push_str(&format!(" \\\\\n  {}\n  \\endhead\n", double_rule));
 
         out.push_str("  \\endfoot\n");
         out.push_str("  \\endlastfoot\n");
@@ -1225,7 +1219,7 @@ fn render_table<'a>(
         out.push_str("|}\n  \\hline\n");
         out.push_str("    ");
         out.push_str(&emit_header_row(&processed[0]));
-        out.push_str(" \\\\\n  \\hline\\hline\n");
+        out.push_str(&format!(" \\\\\n  {}\n", double_rule));
         for (data_idx, row) in processed.iter().skip(1).enumerate() {
             let source_row = data_idx + 1;
             out.push_str("    ");
