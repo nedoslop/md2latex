@@ -597,7 +597,14 @@ fn render_code_block(
         if render {
             render_plantuml_block(code, out, cfg, state, label, caption);
         } else {
-            emit_listing(literal, "", label.as_deref(), caption.as_deref(), out, cfg);
+            emit_listing(
+                literal,
+                "plantuml",
+                label.as_deref(),
+                caption.as_deref(),
+                out,
+                cfg,
+            );
         }
         return;
     }
@@ -880,6 +887,7 @@ fn map_listings_lang(lang: &str) -> String {
         "r" => "R".into(),
         "matlab" => "Matlab".into(),
         "go" | "golang" => "Go".into(),
+        "plantuml" | "puml" => "PlantUML".into(),
         _ => String::new(),
     }
 }

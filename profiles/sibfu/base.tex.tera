@@ -132,6 +132,7 @@
   breaklines=true,
   columns=fullflexible,
   keepspaces=true,
+  showlines=true,
   showstringspaces=false,
   tabsize=2,
   {% if code_frame %}frame=single,{% else %}frame=none,{% endif %}
@@ -177,6 +178,24 @@
   morestring=[b]",
   morestring=[b]',
   morestring=[b]`,
+}
+\lstdefinelanguage{PlantUML}{
+  morekeywords={actor,participant,boundary,control,entity,database,collections,
+                queue,class,interface,enum,abstract,struct,annotation,package,
+                namespace,node,folder,frame,cloud,rectangle,component,usecase,
+                state,object,as,note,left,right,of,on,top,bottom,over,activate,
+                deactivate,destroy,create,return,alt,else,opt,loop,par,break,
+                critical,group,end,title,header,footer,legend,skinparam,
+                autonumber,newpage,box,hide,show,start,stop,if,then,endif,
+                while,endwhile,repeat,backward,fork,again},
+  alsoletter={@},
+  morekeywords=[2]{@startuml,@enduml,@startmindmap,@endmindmap,@startwbs,@endwbs,
+                   @startgantt,@endgantt,@startjson,@endjson,@startyaml,@endyaml},
+  keywordstyle=[2]\bfseries\color[rgb]{0.50,0.10,0.50},
+  sensitive=true,
+  morecomment=[l]{'},
+  morecomment=[s]{/'}{'/},
+  morestring=[b]",
 }
 {% endif %}
 {% endif %}
