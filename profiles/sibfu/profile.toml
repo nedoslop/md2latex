@@ -63,6 +63,11 @@ figure_caption_below         = true
 table_caption_above          = true
 default_figure_width         = "0.8"
 
+section_before_skip    = "0pt"
+section_after_skip     = "\\baselineskip"
+subsection_before_skip = "\\baselineskip"
+subsection_after_skip  = "\\baselineskip"
+
 language       = "russian"
 other_language = "english"
 
