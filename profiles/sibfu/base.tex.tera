@@ -128,12 +128,14 @@
   aboveskip=4pt,
   belowskip=6pt,
   basicstyle=\linespread{1.0}\ttfamily\fontsize{ {{- code_font_size | trim -}} }{ {{- code_baseline | trim -}} }\selectfont,
-  extendedchars=true,
+  extendedchars=false,
+  inputencoding=utf8,
   breaklines=true,
   columns=fullflexible,
   keepspaces=true,
   showlines=true,
   showstringspaces=false,
+  upquote=true,
   tabsize=2,
   {% if code_frame %}frame=single,{% else %}frame=none,{% endif %}
   {% if code_line_numbers %}numbers=left,{% else %}numbers=none,{% endif %}
