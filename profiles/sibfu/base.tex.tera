@@ -218,7 +218,7 @@
 \makeatletter
 \setlist[itemize]{
   label={{ itemize_label }},
-  wide=\dimexpr{{ paragraph_indent | trim }}*\@listdepth\relax,
+  wide=\dimexpr{{ paragraph_indent | trim }} + 3.5mm*(\@listdepth-1)\relax,
   leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
@@ -226,7 +226,7 @@
 
 \setlist[enumerate]{
   label={{ enumerate_label }},
-  wide=\dimexpr{{ paragraph_indent | trim }} + 5mm*(\@listdepth-1)\relax,
+  wide=\dimexpr{{ paragraph_indent | trim }} + 3.5mm*(\@listdepth-1)\relax,
   leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
