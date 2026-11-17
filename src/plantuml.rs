@@ -16,6 +16,7 @@ use anyhow::{Context, Result};
 use reqwest::blocking::Client;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -223,5 +224,10 @@ fn download_jar_to_default_location(out_dir: &Path) -> Result<PathBuf> {
 fn sha256_hex(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s.as_bytes());
-    format!("{:x}", hasher.finalize())
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(&mut hex, "{:02x}", byte);
+    }
+    hex
 }

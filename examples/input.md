@@ -140,13 +140,6 @@ Markdown для содержания и автоматической генер�
 
 ![Тест](test.png "#fig:test width=0.5")
 
-```cpp
-int main() {
-    std::cout << "TEST CODE" << std::endl;
-    return 0;
-}
-```
-
 ![Рендер PDF-документа прямо сюда](practica8.pdf)
 
 ## 3 РЕАЛИЗАЦИЯ

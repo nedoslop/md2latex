@@ -3,6 +3,7 @@ import os
 cwd = os.path.dirname(os.path.dirname(__file__))
 
 files = [
+    'Cargo.toml',
     'src/config.rs',
     'src/images.rs',
     'src/log.rs',

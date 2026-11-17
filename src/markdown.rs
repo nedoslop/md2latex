@@ -1114,12 +1114,12 @@ fn render_inline<'a>(
                     out.push_str(&format!("${}$", m.literal));
                 }
             }
-            NodeValue::Strong => {
+            NodeValue::Strong(_) => {
                 out.push_str("\\textbf{");
                 render_inline(child, out, cfg, state)?;
                 out.push('}');
             }
-            NodeValue::Emph => {
+            NodeValue::Emph(_) => {
                 out.push_str("\\textit{");
                 render_inline(child, out, cfg, state)?;
                 out.push('}');
