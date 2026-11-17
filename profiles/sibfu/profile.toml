@@ -29,6 +29,7 @@ base = "base.tex.tera"
 # Selected via `[project].doc_type` in the user's config.
 [doc_types]
 course_work = "course_work.tex.tera"
+practice_work = "practice_work.tex.tera"
 # diploma    = "diploma.tex.tera"
 # practice   = "practice.tex.tera"
 # essay      = "essay.tex.tera"

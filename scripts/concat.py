@@ -13,6 +13,7 @@ files = [
     'src/template.rs',
     'profiles/sibfu/base.tex.tera',
     'profiles/sibfu/course_work.tex.tera',
+    'profiles/sibfu/practice_work.tex.tera',
     'profiles/sibfu/profile.toml',
     'examples/input.md',
 ]

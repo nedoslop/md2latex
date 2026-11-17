@@ -1,0 +1,112 @@
+{%- set ministry         = extra.ministry         | default(value="Министерство науки и высшего образования РФ") -%}
+{%- set org_line1        = extra.org_line1        | default(value="Федеральное государственное автономное") -%}
+{%- set org_line2        = extra.org_line2        | default(value="образовательное учреждение высшего образования") -%}
+{%- set university_quoted = extra.university_quoted | default(value="«" ~ university ~ "»") -%}
+{%- set institute_label  = extra.institute_label  | default(value="институт") -%}
+{%- set department_label = extra.department_label | default(value="кафедра") -%}
+{%- set doc_kind         = extra.doc_kind         | default(value="ОТЧЕТ О ПРАКТИЧЕСКОЙ РАБОТЕ") -%}
+{%- set work_number      = extra.work_number      | default(value="") -%}
+{%- set discipline       = extra.discipline       | default(value="") -%}
+{%- set discipline_label = extra.discipline_label | default(value="наименование дисциплины") -%}
+{%- set topic_label      = extra.topic_label      | default(value="тема работы") -%}
+{%- set supervisor_label = extra.supervisor_label | default(value="Преподаватель") -%}
+{%- set student_label    = extra.student_label    | default(value="Студент") -%}
+{%- set group_id_label   = extra.group_id_label   | default(value="номер группы, зачетной книжки") -%}
+{%- set signature_label  = extra.signature_label  | default(value="подпись, дата") -%}
+{%- set name_label       = extra.name_label       | default(value="инициалы, фамилия") -%}
+\begin{titlepage}
+\thispagestyle{empty}
+\setlength{\parindent}{0pt}
+\begin{singlespace}
+\begin{center}
+{\fontsize{14pt}{16.8pt}\selectfont
+{{ ministry }}\par}
+{\fontsize{12pt}{14.4pt}\selectfont
+{{ org_line1 }}\\
+{{ org_line2 }}\\
+\textbf{\MakeUppercase{ {{- university_quoted -}} }}\par}
+
+\vspace{1.2cm}
+
+{% if institute | trim != "" %}
+{\fontsize{14pt}{16.8pt}\selectfont {{ institute }}\par}
+{% else %}
+\rule{12cm}{0.4pt}\par
+{% endif %}
+{\fontsize{10pt}{12pt}\selectfont {{ institute_label }}\par}
+
+\vspace{0.6cm}
+
+{% if department | trim != "" %}
+{\fontsize{14pt}{16.8pt}\selectfont {{ department }}\par}
+{% else %}
+\rule{12cm}{0.4pt}\par
+{% endif %}
+{\fontsize{10pt}{12pt}\selectfont {{ department_label }}\par}
+\end{center}
+
+\vspace{1.5cm}
+
+\begin{center}
+{\fontsize{14pt}{16.8pt}\selectfont\bfseries {{ doc_kind }}{% if work_number | trim != "" %} № {{ work_number }}{% endif %}\par}
+
+\vspace{0.6cm}
+
+{\fontsize{14pt}{16.8pt}\selectfont По дисциплине {% if discipline | trim != "" %}«{{ discipline }}»{% else %}\rule{8.5cm}{0.4pt}{% endif %}\par}
+\vspace{0.1cm}
+{\fontsize{10pt}{12pt}\selectfont {{ discipline_label }}\par}
+
+{% if topic | trim != "" %}
+\vspace{0.6cm}
+{\fontsize{14pt}{16.8pt}\selectfont {{ topic }}\par}
+\vspace{0.1cm}
+{\fontsize{10pt}{12pt}\selectfont {{ topic_label }}\par}
+{% endif %}
+\end{center}
+
+\vspace{1.5cm}
+
+\noindent
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} l c c c @{}}
+{\fontsize{14pt}{16.8pt}\selectfont {{ supervisor_label }}} &
+&
+\begin{tabular}[t]{@{}c@{}}
+  \rule{3.5cm}{0.4pt}\\
+  {\fontsize{10pt}{12pt}\selectfont {{ signature_label }}}
+\end{tabular} &
+\begin{tabular}[t]{@{}c@{}}
+  {\fontsize{14pt}{16.8pt}\selectfont {{ supervisor }}}\\
+  {\fontsize{10pt}{12pt}\selectfont {{ name_label }}}
+\end{tabular} \\[1.4cm]
+
+{% for s in students %}
+{\fontsize{14pt}{16.8pt}\selectfont {{ student_label }}} &
+{% if s.group | trim != "" or s.student_id | trim != "" %}
+\begin{tabular}[t]{@{}c@{}}
+  {\fontsize{14pt}{16.8pt}\selectfont {% if s.group | trim != "" %}{{ s.group }}{% endif %}{% if s.group | trim != "" and s.student_id | trim != "" %}, {% endif %}{% if s.student_id | trim != "" %}{{ s.student_id }}{% endif %}}\\
+  {\fontsize{10pt}{12pt}\selectfont {{ group_id_label }}}
+\end{tabular}
+{% else %}
+\begin{tabular}[t]{@{}c@{}}
+  \rule{4.5cm}{0.4pt}\\
+  {\fontsize{10pt}{12pt}\selectfont {{ group_id_label }}}
+\end{tabular}
+{% endif %} &
+\begin{tabular}[t]{@{}c@{}}
+  \rule{3.5cm}{0.4pt}\\
+  {\fontsize{10pt}{12pt}\selectfont {{ signature_label }}}
+\end{tabular} &
+\begin{tabular}[t]{@{}c@{}}
+  {\fontsize{14pt}{16.8pt}\selectfont {{ s.name }}}\\
+  {\fontsize{10pt}{12pt}\selectfont {{ name_label }}}
+\end{tabular}{% if not loop.last %} \\[1.4cm]{% else %} \\{% endif %}
+{% endfor %}
+\end{tabular*}
+
+\vfill
+
+\begin{center}
+{\fontsize{14pt}{16.8pt}\selectfont {{ city }} {{ year }}\par}
+\end{center}
+\end{singlespace}
+\end{titlepage}
