@@ -216,7 +216,7 @@
 
 \setlist[enumerate]{
   label={{ enumerate_label }},
-  wide=\dimexpr{{ paragraph_indent | trim }}*\@listdepth\relax,
+  wide=\dimexpr{{ paragraph_indent | trim }} + 5mm*(\@listdepth-1)\relax,
   leftmargin=0pt,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
@@ -307,8 +307,8 @@
 \setlength{\cftbeforesubsubsecskip}{2pt}
 
 \setlength{\cftsecindent}{0em}
-\setlength{\cftsubsecindent}{1.2em}
-\setlength{\cftsubsubsecindent}{2.4em}
+\setlength{\cftsubsecindent}{1em}
+\setlength{\cftsubsubsecindent}{2em}
 
 \cftsetpnumwidth{1.8em}
 \cftsetrmarg{2.5em}
