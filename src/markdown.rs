@@ -39,29 +39,40 @@
 //!
 //! Two ways to include a diagram:
 //!
-//! 1. **Inline code block** — a fenced block with language `plantuml`:
+//! 1. **Inline code block** — a fenced block with language `plantuml`.
+//!    By default it is rendered as a **code listing** (just like any
+//!    other language). Add `render=true` to turn it into a rendered
+//!    figure:
 //!
 //!    ````markdown
-//!    ```plantuml #fig:my-diagram Пример диаграммы
+//!    ```plantuml render=true #fig:my-diagram Пример диаграммы
 //!    @startuml
 //!    A -> B
 //!    @enduml
 //!    ```
 //!    ````
 //!
-//! 2. **External file** — an image reference to a `.puml` file:
+//!    `render=false` (or omitting `render`) keeps the block as a
+//!    listing. Both `#lst:` and `#fig:` labels are accepted; use
+//!    `#lst:` for listings and `#fig:` for rendered figures — a
+//!    mismatch is not an error but is semantically odd.
+//!
+//! 2. **External file** — an image reference to a `.puml` file. Files
+//!    with a `.puml` extension are **always** rendered as figures
+//!    (the extension itself is the "render me" signal):
 //!
 //!    ```markdown
 //!    ![Пример диаграммы](diagrams/seq.puml "#fig:seq width=0.8")
 //!    ```
 //!
-//!    The file is read from the source tree (relative to the Markdown
-//!    file), rendered via PlantUML, and cached by content hash. The alt
-//!    text becomes the caption; `#fig:...` in the title sets the label;
-//!    `width=...` overrides the width.
+//! Rendered figures honour `style.figure_caption_below` — with СТО СФУ
+//! profiles the caption goes **below** the picture.
 //!
-//! Both forms honour `style.figure_caption_below` — with СТО СФУ profiles
-//! the caption is emitted **below** the picture.
+//! ## References inside captions
+//!
+//! Captions (of listings, figures, tables) support the same "`` `\cmd` ``
+//! = raw LaTeX" convention that inline code uses in body text. E.g.
+//! `Код примера \`\ref{fig:x}\`` produces `Код примера \ref{fig:x}`.
 //!
 //! ## Table column alignment
 //!
@@ -96,21 +107,17 @@ struct PendingTableCaption {
     new_page: bool,
 }
 
-/// One logical table cell after `<<`/`^^` folding.
 #[derive(Clone)]
 struct Cell {
     colspan: usize,
     rowspan: usize,
     content: String,
-    /// True for `^^` continuation cells: emit an empty cell.
     phantom: bool,
-    /// Alignment inherited from the starting physical column.
     align: TableAlignment,
 }
 
 type Row = Vec<Cell>;
 
-/// Mutable state carried through the rendering pass.
 struct RenderState<'a> {
     ctx: Ctx,
     pending_table: Option<PendingTableCaption>,
@@ -122,9 +129,6 @@ struct RenderState<'a> {
     footnote_counter: usize,
     md_dir: PathBuf,
     plantuml: Option<&'a PlantUml>,
-    /// When `true`, `.puml` images encountered by `render_image_inline`
-    /// are silently skipped — `render_paragraph` will hoist them out as
-    /// block figures afterwards. Set only during mixed-paragraph rendering.
     skip_puml_images: bool,
 }
 
@@ -175,7 +179,7 @@ pub fn markdown_to_latex(
         render_node(node, &mut out, cfg, &mut state)?;
     }
     if let Some(pt) = state.pending_table.take() {
-        out.push_str(&escape_latex(&pt.caption));
+        out.push_str(&format_caption(&pt.caption));
         out.push_str("\n\n");
     }
     Ok(out)
@@ -236,7 +240,7 @@ fn render_node<'a>(
         NodeValue::Table(_) | NodeValue::FootnoteDefinition(_)
     ) {
         if let Some(pt) = state.pending_table.take() {
-            out.push_str(&escape_latex(&pt.caption));
+            out.push_str(&format_caption(&pt.caption));
             out.push_str("\n\n");
         }
     }
@@ -448,7 +452,6 @@ fn render_paragraph<'a>(
         }
     }
 
-    // Image-only paragraph: every image renders as a block (figures etc.).
     if has_image && !has_text {
         for child in node.children() {
             if let NodeValue::Image(link) = &child.data.borrow().value {
@@ -458,9 +461,6 @@ fn render_paragraph<'a>(
         return Ok(());
     }
 
-    // Mixed paragraph (or text-only). PlantUML images must NOT be inlined
-    // as `\includegraphics{...puml}` — hoist them out and render as
-    // proper `figure`s after the paragraph text.
     let puml_images: Vec<(String, String, String)> = node
         .children()
         .filter_map(|c| {
@@ -517,7 +517,7 @@ fn parse_table_meta(after: &str) -> (Option<String>, String, bool, bool) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Code blocks (incl. inline PlantUML)
+// Code blocks
 // ─────────────────────────────────────────────────────────────────────────
 
 fn parse_code_info(info: &str) -> (&str, Option<String>, Option<String>) {
@@ -549,15 +549,22 @@ fn parse_code_info(info: &str) -> (&str, Option<String>, Option<String>) {
     (lang, label, caption)
 }
 
-/// Разбирает info‑string блока `plantuml` (`#fig:label` + подпись).
-/// Ожидает строку **без** ведущего `plantuml`-токена.
-fn parse_plantuml_info(info: &str) -> (Option<String>, Option<String>) {
+fn parse_plantuml_info(info: &str) -> (bool, Option<String>, Option<String>) {
+    let mut render = false;
     let mut label = None;
     let mut caption_tokens = Vec::new();
 
     for tok in info.split_whitespace() {
-        if let Some(l) = tok.strip_prefix("#fig:") {
+        if let Some(v) = tok.strip_prefix("render=") {
+            render = matches!(v.to_lowercase().as_str(), "true" | "1" | "yes" | "on");
+        } else if tok == "render" {
+            render = true;
+        } else if let Some(l) = tok.strip_prefix("#fig:") {
             label = Some(format!("fig:{}", l));
+        } else if let Some(l) = tok.strip_prefix("#lst:") {
+            label = Some(format!("lst:{}", l));
+        } else if tok.starts_with('#') && !tok.starts_with("#!") {
+            log::warn(&format!("unknown plantuml info tag '{}' — ignored", tok));
         } else {
             caption_tokens.push(tok);
         }
@@ -568,7 +575,7 @@ fn parse_plantuml_info(info: &str) -> (Option<String>, Option<String>) {
     } else {
         Some(caption_tokens.join(" "))
     };
-    (label, caption)
+    (render, label, caption)
 }
 
 fn render_code_block(
@@ -579,15 +586,41 @@ fn render_code_block(
 ) {
     let literal = code.literal.trim_end();
 
-    // PlantUML: проверяем ДО parse_code_info.
     let first_token = code.info.split_whitespace().next().unwrap_or("");
     if first_token.eq_ignore_ascii_case("plantuml") {
-        render_plantuml_block(code, out, cfg, state);
+        let rest = code
+            .info
+            .split_once(char::is_whitespace)
+            .map(|(_, r)| r.trim())
+            .unwrap_or("");
+        let (render, label, caption) = parse_plantuml_info(rest);
+        if render {
+            render_plantuml_block(code, out, cfg, state, label, caption);
+        } else {
+            emit_listing(literal, "", label.as_deref(), caption.as_deref(), out, cfg);
+        }
         return;
     }
 
     let (lang, label, caption) = parse_code_info(&code.info);
+    emit_listing(
+        literal,
+        lang,
+        label.as_deref(),
+        caption.as_deref(),
+        out,
+        cfg,
+    );
+}
 
+fn emit_listing(
+    literal: &str,
+    lang: &str,
+    label: Option<&str>,
+    caption: Option<&str>,
+    out: &mut String,
+    cfg: &Config,
+) {
     if !cfg.code.enabled {
         if label.is_some() || caption.is_some() {
             log::warn("code block has label/caption but code rendering is disabled");
@@ -602,10 +635,10 @@ fn render_code_block(
     if cfg.code.engine.eq_ignore_ascii_case("minted") {
         let m = map_minted_lang(lang);
         let mut opts: Vec<String> = Vec::new();
-        if let Some(c) = &caption {
-            opts.push(format!("caption={{{}}}", escape_latex(c)));
+        if let Some(c) = caption {
+            opts.push(format!("caption={{{}}}", format_caption(c)));
         }
-        if let Some(l) = &label {
+        if let Some(l) = label {
             opts.push(format!("label={{{}}}", l));
         }
         if opts.is_empty() {
@@ -627,10 +660,10 @@ fn render_code_block(
         if !l.is_empty() {
             opts.push(format!("language={}", l));
         }
-        if let Some(c) = &caption {
-            opts.push(format!("caption={{{}}}", escape_latex(c)));
+        if let Some(c) = caption {
+            opts.push(format!("caption={{{}}}", format_caption(c)));
         }
-        if let Some(lbl) = &label {
+        if let Some(lbl) = label {
             opts.push(format!("label={{{}}}", lbl));
         }
         if opts.is_empty() {
@@ -648,19 +681,14 @@ fn render_code_block(
     }
 }
 
-/// Рендерит **inline** `plantuml`-блок как рисунок с подписью.
 fn render_plantuml_block(
     code: &NodeCodeBlock,
     out: &mut String,
     cfg: &Config,
     state: &RenderState<'_>,
+    label: Option<String>,
+    caption: Option<String>,
 ) {
-    // Отрезаем "plantuml" от info и разбираем только хвост.
-    let mut parts = code.info.splitn(2, char::is_whitespace);
-    let _lang = parts.next();
-    let rest_info = parts.next().unwrap_or("").trim();
-    let (label, caption) = parse_plantuml_info(rest_info);
-
     let Some(plantuml) = state.plantuml else {
         log::warn("PlantUML is not available; code block omitted");
         out.push_str(&format!(
@@ -684,9 +712,17 @@ fn render_plantuml_block(
         }
         Ok(None) => {
             log::warn("PlantUML rendering failed; block omitted");
+            out.push_str(&format!(
+                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
+                code.literal.trim_end()
+            ));
         }
         Err(e) => {
             log::warn(&format!("PlantUML error: {}", e));
+            out.push_str(&format!(
+                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
+                code.literal.trim_end()
+            ));
         }
     }
 }
@@ -699,11 +735,6 @@ fn is_plantuml_file(url: &str) -> bool {
     url.to_lowercase().ends_with(".puml")
 }
 
-/// Рендерит `.puml`-файл (по ссылке из Markdown) как `figure`.
-///
-/// Принимает alt-текст, URL и сырой title (`"#fig:... width=..."`)
-/// отдельно — так функцию можно вызывать и из image-block-пути, и из
-/// hoisting-логики в `render_paragraph`.
 fn render_plantuml_file(
     alt_text: &str,
     url: &str,
@@ -778,9 +809,6 @@ fn render_plantuml_file(
     Ok(())
 }
 
-/// Преобразует абсолютный путь к PNG в относительный (от `out_dir`)
-/// с прямыми слешами — иначе LaTeX поймёт `\x` в пути как управляющую
-/// последовательность.
 fn relative_png_path(png_path: &Path, cfg: &Config) -> String {
     let out_dir = PathBuf::from(&cfg.project.output_dir);
     png_path
@@ -790,8 +818,6 @@ fn relative_png_path(png_path: &Path, cfg: &Config) -> String {
         .replace('\\', "/")
 }
 
-/// Единый эмиттер `figure` для всех PlantUML-диаграмм. Уважает
-/// `style.figure_caption_below`.
 fn emit_plantuml_figure(
     out: &mut String,
     png_rel_path: &str,
@@ -810,7 +836,7 @@ fn emit_plantuml_figure(
     out.push_str("\\begin{figure}[H]\n  \\centering\n");
     if !cfg.style.figure_caption_below {
         if let Some(c) = caption {
-            out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+            out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
         }
         if let Some(l) = label {
             out.push_str(&format!("  \\label{{{}}}\n", l));
@@ -822,7 +848,7 @@ fn emit_plantuml_figure(
     ));
     if cfg.style.figure_caption_below {
         if let Some(c) = caption {
-            out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+            out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
         }
         if let Some(l) = label {
             out.push_str(&format!("  \\label{{{}}}\n", l));
@@ -1210,7 +1236,7 @@ fn parse_tildes(text: &str) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Images (incl. `.puml` branch)
+// Images
 // ─────────────────────────────────────────────────────────────────────────
 
 fn render_image_block<'a>(
@@ -1260,7 +1286,7 @@ fn render_image_block<'a>(
     out.push_str("\\begin{figure}[H]\n  \\centering\n");
     if !cfg.style.figure_caption_below {
         if let Some(ref c) = final_caption {
-            out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+            out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
         }
         if let Some(ref l) = label {
             out.push_str(&format!("  \\label{{{}}}\n", l));
@@ -1272,7 +1298,7 @@ fn render_image_block<'a>(
     ));
     if cfg.style.figure_caption_below {
         if let Some(ref c) = final_caption {
-            out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+            out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
         }
         if let Some(ref l) = label {
             out.push_str(&format!("  \\label{{{}}}\n", l));
@@ -1284,9 +1310,6 @@ fn render_image_block<'a>(
 
 fn render_image_inline(link: &NodeLink, out: &mut String, cfg: &Config, state: &RenderState<'_>) {
     if is_plantuml_file(&link.url) {
-        // Hoisted out of the paragraph by `render_paragraph` — silently
-        // skip. If we *are* inside another inline context (table cell,
-        // list item), warn once.
         if state.skip_puml_images {
             return;
         }
@@ -1636,7 +1659,7 @@ fn render_table<'a>(
 
     let (caption_latex, label_latex, breakable, new_page) = match meta {
         Some(m) => (
-            escape_latex(m.caption.trim_end_matches('.')),
+            format_caption(m.caption.trim_end_matches('.')),
             m.label.unwrap_or_default(),
             m.breakable,
             m.new_page,
@@ -1796,6 +1819,43 @@ pub fn escape_latex(s: &str) -> String {
             _ => out.push(c),
         }
     }
+    out
+}
+
+pub fn format_caption(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut buf = String::new();
+    let mut in_code = false;
+
+    for c in s.chars() {
+        if c == '`' {
+            if in_code {
+                if buf.starts_with('\\') {
+                    out.push_str(&buf);
+                } else {
+                    out.push('`');
+                    out.push_str(&escape_latex(&buf));
+                    out.push('`');
+                }
+                buf.clear();
+                in_code = false;
+            } else {
+                out.push_str(&escape_latex(&buf));
+                buf.clear();
+                in_code = true;
+            }
+        } else {
+            buf.push(c);
+        }
+    }
+
+    if in_code {
+        out.push('`');
+        out.push_str(&escape_latex(&buf));
+    } else {
+        out.push_str(&escape_latex(&buf));
+    }
+
     out
 }
 

@@ -211,7 +211,7 @@ int main() {
 
 ### 3.5 Поддержка PlantUML
 
-```plantuml #fig:class-example Пример диаграммы последовательности (inline PlantUML)
+```plantuml render=true #fig:class-example Пример диаграммы последовательности (inline PlantUML)
 @startuml
 actor Пользователь
 participant "md2latex" as MD
@@ -225,6 +225,19 @@ MD --> Пользователь: PDF с диаграммой
 ```
 
 Ссылка на рисунок: см. рис. `\ref{fig:class-example}`.
+
+```plantuml Код примера
+@startuml
+actor Пользователь
+participant "md2latex" as MD
+participant "PlantUML" as PU
+
+Пользователь -> MD: Запускает сборку
+MD -> PU: Рендерит блок plantuml
+PU --> MD: PNG
+MD --> Пользователь: PDF с диаграммой
+@enduml
+```
 
 ![Пример PlantUML из внешнего файла](classes.puml "width=0.5")
 
