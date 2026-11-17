@@ -71,6 +71,15 @@
 \usepackage{caption}
 \usepackage{xcolor}
 \usepackage[normalem]{ulem}   % \sout
+\AtBeginDocument{
+  \setlength{\abovedisplayskip}{\baselineskip}
+  \setlength{\belowdisplayskip}{\baselineskip}
+  \setlength{\abovedisplayshortskip}{\baselineskip}
+  \setlength{\belowdisplayshortskip}{\baselineskip}
+}
+\setlength{\intextsep}{\baselineskip}
+\setlength{\abovecaptionskip}{6pt}
+\setlength{\belowcaptionskip}{0pt}
 
 % ========== Captions ==========
 \DeclareCaptionLabelSeparator{stu}{~\textendash~}

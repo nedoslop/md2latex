@@ -52,10 +52,6 @@
 
 \vspace{0.6cm}
 
-{\fontsize{14pt}{16.8pt}\selectfont По дисциплине {% if discipline | trim != "" %}«{{ discipline }}»{% else %}\rule{8.5cm}{0.4pt}{% endif %}\par}
-\vspace{0.1cm}
-{\fontsize{10pt}{12pt}\selectfont {{ discipline_label }}\par}
-
 {% if topic | trim != "" %}
 \vspace{0.6cm}
 {\fontsize{14pt}{16.8pt}\selectfont {{ topic }}\par}
