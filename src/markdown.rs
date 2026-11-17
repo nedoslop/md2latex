@@ -549,9 +549,13 @@ fn parse_code_info(info: &str) -> (&str, Option<String>, Option<String>) {
     (lang, label, caption)
 }
 
-fn parse_plantuml_info(info: &str) -> (bool, Option<String>, Option<String>) {
+fn parse_plantuml_info(
+    info: &str,
+    default_width: &str,
+) -> (bool, Option<String>, String, Option<String>) {
     let mut render = false;
     let mut label = None;
+    let mut width = default_width.to_string();
     let mut caption_tokens = Vec::new();
 
     for tok in info.split_whitespace() {
@@ -559,6 +563,8 @@ fn parse_plantuml_info(info: &str) -> (bool, Option<String>, Option<String>) {
             render = matches!(v.to_lowercase().as_str(), "true" | "1" | "yes" | "on");
         } else if tok == "render" {
             render = true;
+        } else if let Some(w) = tok.strip_prefix("width=") {
+            width = w.to_string();
         } else if let Some(l) = tok.strip_prefix("#fig:") {
             label = Some(format!("fig:{}", l));
         } else if let Some(l) = tok.strip_prefix("#lst:") {
@@ -575,7 +581,7 @@ fn parse_plantuml_info(info: &str) -> (bool, Option<String>, Option<String>) {
     } else {
         Some(caption_tokens.join(" "))
     };
-    (render, label, caption)
+    (render, label, width, caption)
 }
 
 fn render_code_block(
@@ -593,9 +599,10 @@ fn render_code_block(
             .split_once(char::is_whitespace)
             .map(|(_, r)| r.trim())
             .unwrap_or("");
-        let (render, label, caption) = parse_plantuml_info(rest);
+        let (render, label, width, caption) =
+            parse_plantuml_info(rest, &cfg.style.default_figure_width);
         if render {
-            render_plantuml_block(code, out, cfg, state, label, caption);
+            render_plantuml_block(code, out, cfg, state, label, &width, caption);
         } else {
             emit_listing(
                 literal,
@@ -694,6 +701,7 @@ fn render_plantuml_block(
     cfg: &Config,
     state: &RenderState<'_>,
     label: Option<String>,
+    width: &str,
     caption: Option<String>,
 ) {
     let Some(plantuml) = state.plantuml else {
@@ -711,7 +719,7 @@ fn render_plantuml_block(
             emit_plantuml_figure(
                 out,
                 &rel_str,
-                "\\textwidth",
+                width,
                 caption.as_deref(),
                 label.as_deref(),
                 cfg,
