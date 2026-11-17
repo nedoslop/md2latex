@@ -71,11 +71,12 @@
 \usepackage{caption}
 \usepackage{xcolor}
 \usepackage[normalem]{ulem}   % \sout
+% TODO: is this right???
 \AtBeginDocument{
-  \setlength{\abovedisplayskip}{\baselineskip}
-  \setlength{\belowdisplayskip}{\baselineskip}
-  \setlength{\abovedisplayshortskip}{\baselineskip}
-  \setlength{\belowdisplayshortskip}{\baselineskip}
+  \setlength{\abovedisplayskip}{0pt}
+  \setlength{\belowdisplayskip}{10pt}
+  \setlength{\abovedisplayshortskip}{0pt}
+  \setlength{\belowdisplayshortskip}{10pt}
 }
 \setlength{\intextsep}{\baselineskip}
 \setlength{\abovecaptionskip}{6pt}
@@ -118,7 +119,7 @@
   position=top,
   singlelinecheck=false,
   font={normalsize},
-  skip=0pt,
+  skip=4pt,
   indention=0pt
 }
 {% if code_engine == "minted" %}
