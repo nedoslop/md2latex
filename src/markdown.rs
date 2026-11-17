@@ -154,6 +154,92 @@ impl<'a> RenderState<'a> {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Image & PlantUML sizing helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+struct ImageSize {
+    /// None означает `orig` (не передавать width в \includegraphics)
+    width: Option<String>,
+    height: Option<String>,
+}
+
+impl ImageSize {
+    fn from_defaults(default_width: &str) -> Self {
+        Self {
+            width: normalize_width_value(default_width),
+            height: None,
+        }
+    }
+
+    /// Формирует список опций для `\includegraphics[...]`
+    fn to_includegraphics_opts(&self, block_mode: bool, interpolate: bool) -> String {
+        let mut opts = Vec::new();
+        let unit_ref = if block_mode {
+            "\\textwidth"
+        } else {
+            "\\linewidth"
+        };
+        let height_ref = if block_mode {
+            "\\textheight"
+        } else {
+            "\\linewidth"
+        };
+
+        if let Some(ref w) = self.width {
+            opts.push(format!("width={}", format_dim(w, unit_ref)));
+        }
+        if let Some(ref h) = self.height {
+            opts.push(format!("height={}", format_dim(h, height_ref)));
+        }
+        if self.width.is_some() && self.height.is_some() {
+            opts.push("keepaspectratio=false".to_string());
+        }
+        if interpolate {
+            opts.push("interpolate=true".to_string());
+        }
+
+        opts.join(",")
+    }
+}
+
+fn normalize_width_value(val: &str) -> Option<String> {
+    let v = val.trim();
+    if v.is_empty()
+        || v.eq_ignore_ascii_case("orig")
+        || v.eq_ignore_ascii_case("original")
+        || v.eq_ignore_ascii_case("auto")
+    {
+        None
+    } else {
+        Some(v.to_string())
+    }
+}
+
+fn normalize_height_value(val: &str) -> Option<String> {
+    let v = val.trim();
+    if v.is_empty()
+        || v.eq_ignore_ascii_case("orig")
+        || v.eq_ignore_ascii_case("original")
+        || v.eq_ignore_ascii_case("auto")
+    {
+        None
+    } else {
+        Some(v.to_string())
+    }
+}
+
+/// Если передано голое число (например `0.5`), добавляет `\textwidth` / `\textheight` / `\linewidth`.
+/// Если уже есть единицы (`5cm`, `100mm`, `0.5\textwidth` и т.д.), оставляет как есть.
+fn format_dim(val: &str, default_unit: &str) -> String {
+    if val.parse::<f64>().is_ok() {
+        format!("{}{}", val, default_unit)
+    } else {
+        val.to_string()
+    }
+}
+
 pub fn markdown_to_latex(
     md: &str,
     cfg: &Config,
@@ -552,10 +638,10 @@ fn parse_code_info(info: &str) -> (&str, Option<String>, Option<String>) {
 fn parse_plantuml_info(
     info: &str,
     default_width: &str,
-) -> (bool, Option<String>, String, Option<String>) {
+) -> (bool, Option<String>, ImageSize, Option<String>) {
     let mut render = false;
     let mut label = None;
-    let mut width = default_width.to_string();
+    let mut size = ImageSize::from_defaults(default_width);
     let mut caption_tokens = Vec::new();
 
     for tok in info.split_whitespace() {
@@ -564,7 +650,14 @@ fn parse_plantuml_info(
         } else if tok == "render" {
             render = true;
         } else if let Some(w) = tok.strip_prefix("width=") {
-            width = w.to_string();
+            size.width = normalize_width_value(w);
+        } else if let Some(h) = tok.strip_prefix("height=") {
+            size.height = normalize_height_value(h);
+            // Если явно задали только высоту, а width не трогали — сбрасываем дефолтную ширину,
+            // чтобы сохранить пропорции по высоте (если width не передан отдельно).
+            if !info.contains("width=") {
+                size.width = None;
+            }
         } else if let Some(l) = tok.strip_prefix("#fig:") {
             label = Some(format!("fig:{}", l));
         } else if let Some(l) = tok.strip_prefix("#lst:") {
@@ -581,7 +674,7 @@ fn parse_plantuml_info(
     } else {
         Some(caption_tokens.join(" "))
     };
-    (render, label, width, caption)
+    (render, label, size, caption)
 }
 
 fn render_code_block(
@@ -599,10 +692,10 @@ fn render_code_block(
             .split_once(char::is_whitespace)
             .map(|(_, r)| r.trim())
             .unwrap_or("");
-        let (render, label, width, caption) =
+        let (render, label, size, caption) =
             parse_plantuml_info(rest, &cfg.style.default_figure_width);
         if render {
-            render_plantuml_block(code, out, cfg, state, label, &width, caption);
+            render_plantuml_block(code, out, cfg, state, label, &size, caption);
         } else {
             emit_listing(
                 literal,
@@ -625,6 +718,165 @@ fn render_code_block(
         out,
         cfg,
     );
+}
+
+fn render_plantuml_block(
+    code: &NodeCodeBlock,
+    out: &mut String,
+    cfg: &Config,
+    state: &RenderState<'_>,
+    label: Option<String>,
+    size: &ImageSize,
+    caption: Option<String>,
+) {
+    let Some(plantuml) = state.plantuml else {
+        log::warn("PlantUML is not available; code block omitted");
+        out.push_str(&format!(
+            "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
+            code.literal.trim_end()
+        ));
+        return;
+    };
+
+    match plantuml.render(&code.literal) {
+        Ok(Some(png_path)) => {
+            let rel_str = relative_png_path(&png_path, cfg);
+            emit_plantuml_figure(
+                out,
+                &rel_str,
+                size,
+                caption.as_deref(),
+                label.as_deref(),
+                cfg,
+            );
+        }
+        Ok(None) => {
+            log::warn("PlantUML rendering failed; block omitted");
+            out.push_str(&format!(
+                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
+                code.literal.trim_end()
+            ));
+        }
+        Err(e) => {
+            log::warn(&format!("PlantUML error: {}", e));
+            out.push_str(&format!(
+                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
+                code.literal.trim_end()
+            ));
+        }
+    }
+}
+
+fn render_plantuml_file(
+    alt_text: &str,
+    url: &str,
+    title_raw: &str,
+    out: &mut String,
+    cfg: &Config,
+    state: &RenderState<'_>,
+) -> Result<()> {
+    let (label, size, title_caption) =
+        parse_image_title(title_raw, &cfg.style.default_figure_width);
+
+    let final_caption = if !alt_text.is_empty() {
+        Some(alt_text.trim_end_matches('.').to_string())
+    } else {
+        title_caption.map(|c| c.trim_end_matches('.').to_string())
+    };
+
+    let full_path: PathBuf = if Path::new(url).is_absolute() {
+        PathBuf::from(url)
+    } else {
+        state.md_dir.join(url)
+    };
+
+    if !full_path.is_file() {
+        log::warn(&format!(
+            "PlantUML file not found: {} (link was '{}')",
+            full_path.display(),
+            url
+        ));
+        return Ok(());
+    }
+
+    let code = match fs::read_to_string(&full_path) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn(&format!("failed to read {}: {}", full_path.display(), e));
+            return Ok(());
+        }
+    };
+
+    let Some(plantuml) = state.plantuml else {
+        log::warn("PlantUML is not available; `.puml` reference skipped");
+        return Ok(());
+    };
+
+    match plantuml.render(&code) {
+        Ok(Some(png_path)) => {
+            let rel_str = relative_png_path(&png_path, cfg);
+            emit_plantuml_figure(
+                out,
+                &rel_str,
+                &size,
+                final_caption.as_deref(),
+                label.as_deref(),
+                cfg,
+            );
+        }
+        Ok(None) => {
+            log::warn(&format!(
+                "PlantUML rendering failed for {}; skipped",
+                full_path.display()
+            ));
+        }
+        Err(e) => {
+            log::warn(&format!(
+                "PlantUML error for {}: {}",
+                full_path.display(),
+                e
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn emit_plantuml_figure(
+    out: &mut String,
+    png_rel_path: &str,
+    size: &ImageSize,
+    caption: Option<&str>,
+    label: Option<&str>,
+    cfg: &Config,
+) {
+    let opts = size.to_includegraphics_opts(true, false);
+
+    out.push_str("\\begin{figure}[H]\n  \\centering\n");
+    if !cfg.style.figure_caption_below {
+        if let Some(c) = caption {
+            out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
+        }
+        if let Some(l) = label {
+            out.push_str(&format!("  \\label{{{}}}\n", l));
+        }
+    }
+    if opts.is_empty() {
+        out.push_str(&format!("  \\includegraphics{{{}}}\n", png_rel_path));
+    } else {
+        out.push_str(&format!(
+            "  \\includegraphics[{}]{{{}}}\n",
+            opts, png_rel_path
+        ));
+    }
+    if cfg.style.figure_caption_below {
+        if let Some(c) = caption {
+            out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
+        }
+        if let Some(l) = label {
+            out.push_str(&format!("  \\label{{{}}}\n", l));
+        }
+    }
+    out.push_str("\\end{figure}\n\n");
 }
 
 fn emit_listing(
@@ -695,133 +947,12 @@ fn emit_listing(
     }
 }
 
-fn render_plantuml_block(
-    code: &NodeCodeBlock,
-    out: &mut String,
-    cfg: &Config,
-    state: &RenderState<'_>,
-    label: Option<String>,
-    width: &str,
-    caption: Option<String>,
-) {
-    let Some(plantuml) = state.plantuml else {
-        log::warn("PlantUML is not available; code block omitted");
-        out.push_str(&format!(
-            "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
-            code.literal.trim_end()
-        ));
-        return;
-    };
-
-    match plantuml.render(&code.literal) {
-        Ok(Some(png_path)) => {
-            let rel_str = relative_png_path(&png_path, cfg);
-            emit_plantuml_figure(
-                out,
-                &rel_str,
-                width,
-                caption.as_deref(),
-                label.as_deref(),
-                cfg,
-            );
-        }
-        Ok(None) => {
-            log::warn("PlantUML rendering failed; block omitted");
-            out.push_str(&format!(
-                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
-                code.literal.trim_end()
-            ));
-        }
-        Err(e) => {
-            log::warn(&format!("PlantUML error: {}", e));
-            out.push_str(&format!(
-                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
-                code.literal.trim_end()
-            ));
-        }
-    }
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 // PlantUML from external `.puml` files
 // ─────────────────────────────────────────────────────────────────────────
 
 fn is_plantuml_file(url: &str) -> bool {
     url.to_lowercase().ends_with(".puml")
-}
-
-fn render_plantuml_file(
-    alt_text: &str,
-    url: &str,
-    title_raw: &str,
-    out: &mut String,
-    cfg: &Config,
-    state: &RenderState<'_>,
-) -> Result<()> {
-    let (label, width, title_caption) =
-        parse_image_title(title_raw, &cfg.style.default_figure_width);
-
-    let final_caption = if !alt_text.is_empty() {
-        Some(alt_text.trim_end_matches('.').to_string())
-    } else {
-        title_caption.map(|c| c.trim_end_matches('.').to_string())
-    };
-
-    let full_path: PathBuf = if Path::new(url).is_absolute() {
-        PathBuf::from(url)
-    } else {
-        state.md_dir.join(url)
-    };
-
-    if !full_path.is_file() {
-        log::warn(&format!(
-            "PlantUML file not found: {} (link was '{}')",
-            full_path.display(),
-            url
-        ));
-        return Ok(());
-    }
-
-    let code = match fs::read_to_string(&full_path) {
-        Ok(c) => c,
-        Err(e) => {
-            log::warn(&format!("failed to read {}: {}", full_path.display(), e));
-            return Ok(());
-        }
-    };
-
-    let Some(plantuml) = state.plantuml else {
-        log::warn("PlantUML is not available; `.puml` reference skipped");
-        return Ok(());
-    };
-
-    match plantuml.render(&code) {
-        Ok(Some(png_path)) => {
-            let rel_str = relative_png_path(&png_path, cfg);
-            emit_plantuml_figure(
-                out,
-                &rel_str,
-                &width,
-                final_caption.as_deref(),
-                label.as_deref(),
-                cfg,
-            );
-        }
-        Ok(None) => {
-            log::warn(&format!(
-                "PlantUML rendering failed for {}; skipped",
-                full_path.display()
-            ));
-        }
-        Err(e) => {
-            log::warn(&format!(
-                "PlantUML error for {}: {}",
-                full_path.display(),
-                e
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn relative_png_path(png_path: &Path, cfg: &Config) -> String {
@@ -831,45 +962,6 @@ fn relative_png_path(png_path: &Path, cfg: &Config) -> String {
         .unwrap_or(png_path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-fn emit_plantuml_figure(
-    out: &mut String,
-    png_rel_path: &str,
-    width: &str,
-    caption: Option<&str>,
-    label: Option<&str>,
-    cfg: &Config,
-) {
-    let width_spec =
-        if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') {
-            width.to_string()
-        } else {
-            format!("{}\\textwidth", width)
-        };
-
-    out.push_str("\\begin{figure}[H]\n  \\centering\n");
-    if !cfg.style.figure_caption_below {
-        if let Some(c) = caption {
-            out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
-        }
-        if let Some(l) = label {
-            out.push_str(&format!("  \\label{{{}}}\n", l));
-        }
-    }
-    out.push_str(&format!(
-        "  \\includegraphics[width={}]{{{}}}\n",
-        width_spec, png_rel_path
-    ));
-    if cfg.style.figure_caption_below {
-        if let Some(c) = caption {
-            out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
-        }
-        if let Some(l) = label {
-            out.push_str(&format!("  \\label{{{}}}\n", l));
-        }
-    }
-    out.push_str("\\end{figure}\n\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1269,7 +1361,7 @@ fn render_image_block<'a>(
 
     let src = &link.url;
     let title_raw = link.title.clone();
-    let (label, width, title_caption) =
+    let (label, size, title_caption) =
         parse_image_title(&title_raw, &cfg.style.default_figure_width);
 
     let alt_text = {
@@ -1287,17 +1379,7 @@ fn render_image_block<'a>(
         title_caption.map(|c| c.trim_end_matches('.').to_string())
     };
 
-    let width_spec =
-        if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') {
-            width.clone()
-        } else {
-            format!("{}\\textwidth", width)
-        };
-    let interpolate_opt = if cfg.images.interpolate {
-        ",interpolate=true"
-    } else {
-        ""
-    };
+    let opts = size.to_includegraphics_opts(true, cfg.images.interpolate);
 
     out.push_str("\\begin{figure}[H]\n  \\centering\n");
     if !cfg.style.figure_caption_below {
@@ -1308,10 +1390,11 @@ fn render_image_block<'a>(
             out.push_str(&format!("  \\label{{{}}}\n", l));
         }
     }
-    out.push_str(&format!(
-        "  \\includegraphics[width={}{}]{{{}}}\n",
-        width_spec, interpolate_opt, src
-    ));
+    if opts.is_empty() {
+        out.push_str(&format!("  \\includegraphics{{{}}}\n", src));
+    } else {
+        out.push_str(&format!("  \\includegraphics[{}]{{{}}}\n", opts, src));
+    }
     if cfg.style.figure_caption_below {
         if let Some(ref c) = final_caption {
             out.push_str(&format!("  \\caption{{{}}}\n", format_caption(c)));
@@ -1338,29 +1421,25 @@ fn render_image_inline(link: &NodeLink, out: &mut String, cfg: &Config, state: &
     }
 
     let src = &link.url;
-    let (_, width, _) = parse_image_title(&link.title, "\\linewidth");
+    let (_, size, _) = parse_image_title(&link.title, "1.0");
+    let opts = size.to_includegraphics_opts(false, cfg.images.interpolate);
 
-    let width_spec =
-        if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') {
-            width
-        } else {
-            format!("{}\\linewidth", width)
-        };
-    let interpolate_opt = if cfg.images.interpolate {
-        ",interpolate=true"
+    if opts.is_empty() {
+        out.push_str(&format!("\\includegraphics{{{}}}", src));
     } else {
-        ""
-    };
-    out.push_str(&format!(
-        "\\includegraphics[width={}{}]{{{}}}",
-        width_spec, interpolate_opt, src
-    ));
+        out.push_str(&format!("\\includegraphics[{}]{{{}}}", opts, src));
+    }
 }
 
-fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, String, Option<String>) {
+fn parse_image_title(
+    title: &str,
+    default_width: &str,
+) -> (Option<String>, ImageSize, Option<String>) {
     let mut rest = title.trim().to_string();
     let mut label = None;
-    let mut width = default_width.to_string();
+    let mut size = ImageSize::from_defaults(default_width);
+    let mut has_explicit_width = false;
+
     if rest.starts_with('#') {
         let after = &rest[1..];
         if let Some(space) = after.find(char::is_whitespace) {
@@ -1371,20 +1450,28 @@ fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, Strin
             rest = String::new();
         }
     }
+
     let mut caption_tokens: Vec<String> = Vec::new();
     for token in rest.split_whitespace() {
         if let Some(w) = token.strip_prefix("width=") {
-            width = w.to_string();
+            size.width = normalize_width_value(w);
+            has_explicit_width = true;
+        } else if let Some(h) = token.strip_prefix("height=") {
+            size.height = normalize_height_value(h);
+            if !has_explicit_width {
+                size.width = None;
+            }
         } else {
             caption_tokens.push(token.to_string());
         }
     }
+
     let caption = if caption_tokens.is_empty() {
         None
     } else {
         Some(caption_tokens.join(" "))
     };
-    (label, width, caption)
+    (label, size, caption)
 }
 
 // ─────────────────────────────────────────────────────────────────────────

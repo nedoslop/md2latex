@@ -60,7 +60,7 @@ def quick_sort(arr):
 
 Алгоритм работы программы проиллюстрирован на рисунке `\ref{fig:flow}`.
 
-```plantuml render=true width=0.5 #fig:flow Блок-схема работы программы
+```plantuml render=true width=orig #fig:flow Блок-схема работы программы
 @startuml
 start
 :Генерация случайного массива;
