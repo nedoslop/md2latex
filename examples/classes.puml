@@ -1,0 +1,17 @@
+@startuml
+class Config {
+  +project: Project
+  +style: Style
+  +plantuml: PlantUmlConfig
+}
+class Project {
+  +doc_type: String
+  +profile: String
+  +output_dir: String
+}
+class PlantUml {
+  +render(code): PathBuf
+}
+Config --> Project
+Config --> PlantUml
+@enduml

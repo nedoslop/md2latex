@@ -37,17 +37,31 @@
 //!
 //! ## PlantUML
 //!
-//! A code block with language `plantuml` is rendered to a PNG (via the
-//! `plantuml` module) and inserted as a `figure`. The info string may
-//! contain `#fig:label` and a caption:
+//! Two ways to include a diagram:
 //!
-//! ````markdown
-//! ```plantuml #fig:my-diagram Пример диаграммы
-//! @startuml
-//! A -> B
-//! @enduml
-//! ```
-//! ````
+//! 1. **Inline code block** — a fenced block with language `plantuml`:
+//!
+//!    ````markdown
+//!    ```plantuml #fig:my-diagram Пример диаграммы
+//!    @startuml
+//!    A -> B
+//!    @enduml
+//!    ```
+//!    ````
+//!
+//! 2. **External file** — an image reference to a `.puml` file:
+//!
+//!    ```markdown
+//!    ![Пример диаграммы](diagrams/seq.puml "#fig:seq width=0.8")
+//!    ```
+//!
+//!    The file is read from the source tree (relative to the Markdown
+//!    file), rendered via PlantUML, and cached by content hash. The alt
+//!    text becomes the caption; `#fig:...` in the title sets the label;
+//!    `width=...` overrides the width.
+//!
+//! Both forms honour `style.figure_caption_below` — with СТО СФУ profiles
+//! the caption is emitted **below** the picture.
 //!
 //! ## Table column alignment
 //!
@@ -64,7 +78,8 @@ use comrak::options::Options;
 use comrak::{parse_document, Arena};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Ctx {
@@ -102,17 +117,23 @@ struct RenderState<'a> {
     pending_equation_label: Option<String>,
     skip_next_section_pagebreak: bool,
     in_bibliography: bool,
-    /// Rendered content of each footnote definition, keyed by name.
     footnotes: HashMap<String, String>,
-    /// First-use LaTeX number for each footnote name.
     footnote_numbers: HashMap<String, usize>,
     footnote_counter: usize,
-    /// PlantUML renderer (if available).
+    md_dir: PathBuf,
     plantuml: Option<&'a PlantUml>,
+    /// When `true`, `.puml` images encountered by `render_image_inline`
+    /// are silently skipped — `render_paragraph` will hoist them out as
+    /// block figures afterwards. Set only during mixed-paragraph rendering.
+    skip_puml_images: bool,
 }
 
 impl<'a> RenderState<'a> {
-    fn new(footnotes: HashMap<String, String>, plantuml: Option<&'a PlantUml>) -> Self {
+    fn new(
+        footnotes: HashMap<String, String>,
+        md_dir: PathBuf,
+        plantuml: Option<&'a PlantUml>,
+    ) -> Self {
         Self {
             ctx: Ctx::Ordinary,
             pending_table: None,
@@ -122,12 +143,19 @@ impl<'a> RenderState<'a> {
             footnotes,
             footnote_numbers: HashMap::new(),
             footnote_counter: 0,
+            md_dir,
             plantuml,
+            skip_puml_images: false,
         }
     }
 }
 
-pub fn markdown_to_latex(md: &str, cfg: &Config, plantuml: Option<&PlantUml>) -> Result<String> {
+pub fn markdown_to_latex(
+    md: &str,
+    cfg: &Config,
+    md_dir: &Path,
+    plantuml: Option<&PlantUml>,
+) -> Result<String> {
     let arena = Arena::new();
     let mut options = Options::default();
     options.extension.table = true;
@@ -140,7 +168,7 @@ pub fn markdown_to_latex(md: &str, cfg: &Config, plantuml: Option<&PlantUml>) ->
     let root = parse_document(&arena, md, &options);
 
     let footnotes = collect_footnotes(root, cfg)?;
-    let mut state = RenderState::new(footnotes, plantuml);
+    let mut state = RenderState::new(footnotes, md_dir.to_path_buf(), plantuml);
     let mut out = String::new();
 
     for node in root.children() {
@@ -169,12 +197,9 @@ fn collect_footnotes<'a>(root: &'a AstNode<'a>, cfg: &Config) -> Result<HashMap<
     Ok(map)
 }
 
-/// Renders the content of a footnote definition into inline LaTeX.
-/// Only paragraph children are supported; complex block content is
-/// skipped with a warning.
 fn render_footnote_content<'a>(node: &'a AstNode<'a>, cfg: &Config) -> Result<String> {
     let mut out = String::new();
-    let mut local = RenderState::new(HashMap::new(), None);
+    let mut local = RenderState::new(HashMap::new(), PathBuf::new(), None);
     for child in node.children() {
         let v = child.data.borrow().value.clone();
         match v {
@@ -206,7 +231,6 @@ fn render_node<'a>(
 ) -> Result<()> {
     let value = node.data.borrow().value.clone();
 
-    // Any non-table, non-footnote-def block flushes a pending table caption.
     if !matches!(
         value,
         NodeValue::Table(_) | NodeValue::FootnoteDefinition(_)
@@ -234,7 +258,7 @@ fn render_node<'a>(
             let meta = state.pending_table.take();
             render_table(node, out, meta, cfg, state)?;
         }
-        NodeValue::Image(link) => render_image_block(node, &link, out, cfg)?,
+        NodeValue::Image(link) => render_image_block(node, &link, out, cfg, state)?,
         NodeValue::BlockQuote => {
             out.push_str("\\begin{quote}\n");
             for child in node.children() {
@@ -242,9 +266,7 @@ fn render_node<'a>(
             }
             out.push_str("\\end{quote}\n\n");
         }
-        NodeValue::FootnoteDefinition(_) => {
-            // Consumed by `collect_footnotes`.
-        }
+        NodeValue::FootnoteDefinition(_) => {}
         _ => {
             for child in node.children() {
                 render_node(child, out, cfg, state)?;
@@ -371,7 +393,6 @@ fn render_paragraph<'a>(
 ) -> Result<()> {
     let raw_text = extract_text(node).trim().to_string();
 
-    // `#tbl:name Caption ...` — pending table caption.
     if let Some(after) = raw_text.strip_prefix("#tbl:") {
         let (label, caption, breakable, new_page) = parse_table_meta(after);
         state.pending_table = Some(PendingTableCaption {
@@ -383,7 +404,6 @@ fn render_paragraph<'a>(
         return Ok(());
     }
 
-    // `#eq:name` — pending equation label.
     if let Some(after) = raw_text.strip_prefix("#eq:") {
         let name = after.split_whitespace().next().unwrap_or("").trim();
         if name.is_empty() {
@@ -394,7 +414,6 @@ fn render_paragraph<'a>(
         return Ok(());
     }
 
-    // Display math paragraph?
     let children: Vec<_> = node.children().collect();
     if children.len() == 1 {
         if let NodeValue::Math(m) = &children[0].data.borrow().value {
@@ -411,7 +430,6 @@ fn render_paragraph<'a>(
         }
     }
 
-    // Non-math paragraph — drop any dangling equation label.
     if let Some(lbl) = state.pending_equation_label.take() {
         log::warn(&format!(
             "equation label '{}' was not followed by display math",
@@ -419,7 +437,6 @@ fn render_paragraph<'a>(
         ));
     }
 
-    // Image-only paragraph — render as a figure block.
     let mut has_image = false;
     let mut has_text = false;
     for child in node.children() {
@@ -430,24 +447,51 @@ fn render_paragraph<'a>(
             _ => has_text = true,
         }
     }
+
+    // Image-only paragraph: every image renders as a block (figures etc.).
     if has_image && !has_text {
         for child in node.children() {
             if let NodeValue::Image(link) = &child.data.borrow().value {
-                render_image_block(child, link, out, cfg)?;
+                render_image_block(child, link, out, cfg, state)?;
             }
         }
-    } else {
-        let mut p = String::new();
-        render_inline(node, &mut p, cfg, state)?;
-        if !p.trim().is_empty() {
-            out.push_str(p.trim());
-            out.push_str("\n\n");
-        }
+        return Ok(());
     }
+
+    // Mixed paragraph (or text-only). PlantUML images must NOT be inlined
+    // as `\includegraphics{...puml}` — hoist them out and render as
+    // proper `figure`s after the paragraph text.
+    let puml_images: Vec<(String, String, String)> = node
+        .children()
+        .filter_map(|c| {
+            if let NodeValue::Image(link) = &c.data.borrow().value {
+                if is_plantuml_file(&link.url) {
+                    let alt = extract_text(c).trim().to_string();
+                    return Some((alt, link.url.clone(), link.title.clone()));
+                }
+            }
+            None
+        })
+        .collect();
+
+    state.skip_puml_images = true;
+    let mut p = String::new();
+    let inline_result = render_inline(node, &mut p, cfg, state);
+    state.skip_puml_images = false;
+    inline_result?;
+
+    if !p.trim().is_empty() {
+        out.push_str(p.trim());
+        out.push_str("\n\n");
+    }
+
+    for (alt, url, title) in puml_images {
+        render_plantuml_file(&alt, &url, &title, out, cfg, state)?;
+    }
+
     Ok(())
 }
 
-/// Splits `#tbl:` info string into (label, caption, breakable, new_page).
 fn parse_table_meta(after: &str) -> (Option<String>, String, bool, bool) {
     let mut label = None;
     let mut caption_tokens = Vec::new();
@@ -473,13 +517,9 @@ fn parse_table_meta(after: &str) -> (Option<String>, String, bool, bool) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Code blocks
+// Code blocks (incl. inline PlantUML)
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Parses a code-block info string.
-///
-/// Grammar: `<lang> [#lst:name] [caption...]`
-/// The language token is optional when `#lst:` is the first token.
 fn parse_code_info(info: &str) -> (&str, Option<String>, Option<String>) {
     let tokens: Vec<&str> = info.split_whitespace().collect();
     let mut lang = "";
@@ -509,13 +549,13 @@ fn parse_code_info(info: &str) -> (&str, Option<String>, Option<String>) {
     (lang, label, caption)
 }
 
-/// Разбирает info‑string блока `plantuml`: `#fig:label` и подпись.
+/// Разбирает info‑string блока `plantuml` (`#fig:label` + подпись).
+/// Ожидает строку **без** ведущего `plantuml`-токена.
 fn parse_plantuml_info(info: &str) -> (Option<String>, Option<String>) {
-    let tokens: Vec<&str> = info.split_whitespace().collect();
     let mut label = None;
     let mut caption_tokens = Vec::new();
 
-    for tok in tokens {
+    for tok in info.split_whitespace() {
         if let Some(l) = tok.strip_prefix("#fig:") {
             label = Some(format!("fig:{}", l));
         } else {
@@ -539,8 +579,7 @@ fn render_code_block(
 ) {
     let literal = code.literal.trim_end();
 
-    // ── PlantUML: проверяем ДО parse_code_info, иначе `#fig:` внутри
-    //    info-string превратится в «unknown code-block tag». ────────────
+    // PlantUML: проверяем ДО parse_code_info.
     let first_token = code.info.split_whitespace().next().unwrap_or("");
     if first_token.eq_ignore_ascii_case("plantuml") {
         render_plantuml_block(code, out, cfg, state);
@@ -609,14 +648,18 @@ fn render_code_block(
     }
 }
 
-/// Рендерит блок `plantuml` как рисунок.
+/// Рендерит **inline** `plantuml`-блок как рисунок с подписью.
 fn render_plantuml_block(
     code: &NodeCodeBlock,
     out: &mut String,
     cfg: &Config,
     state: &RenderState<'_>,
 ) {
-    let (label, caption) = parse_plantuml_info(&code.info);
+    // Отрезаем "plantuml" от info и разбираем только хвост.
+    let mut parts = code.info.splitn(2, char::is_whitespace);
+    let _lang = parts.next();
+    let rest_info = parts.next().unwrap_or("").trim();
+    let (label, caption) = parse_plantuml_info(rest_info);
 
     let Some(plantuml) = state.plantuml else {
         log::warn("PlantUML is not available; code block omitted");
@@ -629,27 +672,15 @@ fn render_plantuml_block(
 
     match plantuml.render(&code.literal) {
         Ok(Some(png_path)) => {
-            let out_dir = PathBuf::from(&cfg.project.output_dir);
-            // LaTeX не понимает Windows-разделители: `\a` в `plantuml_cache\acf…`
-            // воспринимается как управляющая последовательность. Приводим
-            // путь к прямым слешам (работают и в xelatex, и в pdftex).
-            let rel_str = png_path
-                .strip_prefix(&out_dir)
-                .unwrap_or(&png_path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            out.push_str("\\begin{figure}[H]\n  \\centering\n");
-            if let Some(ref c) = caption {
-                out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
-            }
-            if let Some(ref l) = label {
-                out.push_str(&format!("  \\label{{{}}}\n", l));
-            }
-            out.push_str(&format!(
-                "  \\includegraphics[width=\\textwidth]{{{}}}\n",
-                rel_str
-            ));
-            out.push_str("\\end{figure}\n\n");
+            let rel_str = relative_png_path(&png_path, cfg);
+            emit_plantuml_figure(
+                out,
+                &rel_str,
+                "\\textwidth",
+                caption.as_deref(),
+                label.as_deref(),
+                cfg,
+            );
         }
         Ok(None) => {
             log::warn("PlantUML rendering failed; block omitted");
@@ -659,6 +690,150 @@ fn render_plantuml_block(
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// PlantUML from external `.puml` files
+// ─────────────────────────────────────────────────────────────────────────
+
+fn is_plantuml_file(url: &str) -> bool {
+    url.to_lowercase().ends_with(".puml")
+}
+
+/// Рендерит `.puml`-файл (по ссылке из Markdown) как `figure`.
+///
+/// Принимает alt-текст, URL и сырой title (`"#fig:... width=..."`)
+/// отдельно — так функцию можно вызывать и из image-block-пути, и из
+/// hoisting-логики в `render_paragraph`.
+fn render_plantuml_file(
+    alt_text: &str,
+    url: &str,
+    title_raw: &str,
+    out: &mut String,
+    cfg: &Config,
+    state: &RenderState<'_>,
+) -> Result<()> {
+    let (label, width, title_caption) =
+        parse_image_title(title_raw, &cfg.style.default_figure_width);
+
+    let final_caption = if !alt_text.is_empty() {
+        Some(alt_text.trim_end_matches('.').to_string())
+    } else {
+        title_caption.map(|c| c.trim_end_matches('.').to_string())
+    };
+
+    let full_path: PathBuf = if Path::new(url).is_absolute() {
+        PathBuf::from(url)
+    } else {
+        state.md_dir.join(url)
+    };
+
+    if !full_path.is_file() {
+        log::warn(&format!(
+            "PlantUML file not found: {} (link was '{}')",
+            full_path.display(),
+            url
+        ));
+        return Ok(());
+    }
+
+    let code = match fs::read_to_string(&full_path) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn(&format!("failed to read {}: {}", full_path.display(), e));
+            return Ok(());
+        }
+    };
+
+    let Some(plantuml) = state.plantuml else {
+        log::warn("PlantUML is not available; `.puml` reference skipped");
+        return Ok(());
+    };
+
+    match plantuml.render(&code) {
+        Ok(Some(png_path)) => {
+            let rel_str = relative_png_path(&png_path, cfg);
+            emit_plantuml_figure(
+                out,
+                &rel_str,
+                &width,
+                final_caption.as_deref(),
+                label.as_deref(),
+                cfg,
+            );
+        }
+        Ok(None) => {
+            log::warn(&format!(
+                "PlantUML rendering failed for {}; skipped",
+                full_path.display()
+            ));
+        }
+        Err(e) => {
+            log::warn(&format!(
+                "PlantUML error for {}: {}",
+                full_path.display(),
+                e
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Преобразует абсолютный путь к PNG в относительный (от `out_dir`)
+/// с прямыми слешами — иначе LaTeX поймёт `\x` в пути как управляющую
+/// последовательность.
+fn relative_png_path(png_path: &Path, cfg: &Config) -> String {
+    let out_dir = PathBuf::from(&cfg.project.output_dir);
+    png_path
+        .strip_prefix(&out_dir)
+        .unwrap_or(png_path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+/// Единый эмиттер `figure` для всех PlantUML-диаграмм. Уважает
+/// `style.figure_caption_below`.
+fn emit_plantuml_figure(
+    out: &mut String,
+    png_rel_path: &str,
+    width: &str,
+    caption: Option<&str>,
+    label: Option<&str>,
+    cfg: &Config,
+) {
+    let width_spec =
+        if width.contains("\\textwidth") || width.contains("\\linewidth") || width.contains('%') {
+            width.to_string()
+        } else {
+            format!("{}\\textwidth", width)
+        };
+
+    out.push_str("\\begin{figure}[H]\n  \\centering\n");
+    if !cfg.style.figure_caption_below {
+        if let Some(c) = caption {
+            out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+        }
+        if let Some(l) = label {
+            out.push_str(&format!("  \\label{{{}}}\n", l));
+        }
+    }
+    out.push_str(&format!(
+        "  \\includegraphics[width={}]{{{}}}\n",
+        width_spec, png_rel_path
+    ));
+    if cfg.style.figure_caption_below {
+        if let Some(c) = caption {
+            out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+        }
+        if let Some(l) = label {
+            out.push_str(&format!("  \\label{{{}}}\n", l));
+        }
+    }
+    out.push_str("\\end{figure}\n\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Code language mapping
+// ─────────────────────────────────────────────────────────────────────────
 
 fn map_listings_lang(lang: &str) -> String {
     match lang.to_lowercase().as_str() {
@@ -848,8 +1023,6 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
         String::new()
     };
 
-    // Reset counters and rebind \the<cnt> to the appendix letter.
-    // Includes subsections so sub-headings are numbered А.1, А.2, ...
     out.push_str(&format!(
         "\\clearpage\n\
          \\phantomsection\n\
@@ -945,7 +1118,7 @@ fn render_inline<'a>(
                 }
             }
             NodeValue::SoftBreak | NodeValue::LineBreak => out.push(' '),
-            NodeValue::Image(link) => render_image_inline(&link, out, cfg),
+            NodeValue::Image(link) => render_image_inline(&link, out, cfg, state),
             NodeValue::Superscript => {
                 out.push_str("\\textsuperscript{");
                 render_inline(child, out, cfg, state)?;
@@ -1037,7 +1210,7 @@ fn parse_tildes(text: &str) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Images
+// Images (incl. `.puml` branch)
 // ─────────────────────────────────────────────────────────────────────────
 
 fn render_image_block<'a>(
@@ -1045,7 +1218,13 @@ fn render_image_block<'a>(
     link: &NodeLink,
     out: &mut String,
     cfg: &Config,
+    state: &RenderState<'_>,
 ) -> Result<()> {
+    if is_plantuml_file(&link.url) {
+        let alt = extract_text(node).trim().to_string();
+        return render_plantuml_file(&alt, &link.url, &link.title, out, cfg, state);
+    }
+
     let src = &link.url;
     let title_raw = link.title.clone();
     let (label, width, title_caption) =
@@ -1103,7 +1282,22 @@ fn render_image_block<'a>(
     Ok(())
 }
 
-fn render_image_inline(link: &NodeLink, out: &mut String, cfg: &Config) {
+fn render_image_inline(link: &NodeLink, out: &mut String, cfg: &Config, state: &RenderState<'_>) {
+    if is_plantuml_file(&link.url) {
+        // Hoisted out of the paragraph by `render_paragraph` — silently
+        // skip. If we *are* inside another inline context (table cell,
+        // list item), warn once.
+        if state.skip_puml_images {
+            return;
+        }
+        log::warn(&format!(
+            "PlantUML diagram '{}' in inline context — move it to its own \
+             paragraph to render as a figure",
+            link.url
+        ));
+        return;
+    }
+
     let src = &link.url;
     let (_, width, _) = parse_image_title(&link.title, "\\linewidth");
 
@@ -1155,11 +1349,9 @@ fn parse_image_title(title: &str, default_width: &str) -> (Option<String>, Strin
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Table rendering with `<<` / `^^` folding and column alignment.
+// Table rendering
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Maps a `TableAlignment` to the LaTeX alignment command used inside
-/// `\multicolumn` specs.
 fn alignment_cmd(align: TableAlignment) -> &'static str {
     match align {
         TableAlignment::Left => "\\raggedright",
@@ -1168,7 +1360,6 @@ fn alignment_cmd(align: TableAlignment) -> &'static str {
     }
 }
 
-/// Folds `<<`-column markers into their left neighbour.
 fn merge_columns(raw: &[String], alignments: &[TableAlignment]) -> Row {
     let mut result: Row = Vec::with_capacity(raw.len());
     for (i, cell) in raw.iter().enumerate() {
@@ -1200,11 +1391,8 @@ fn merge_columns(raw: &[String], alignments: &[TableAlignment]) -> Row {
     result
 }
 
-/// Folds `^^`-row markers into the cell above (same physical column
-/// range). Requires matching `colspan` on the continuation cell.
 fn fold_rowspans(rows: &mut Vec<Row>) {
     let mut active: HashMap<usize, (usize, usize)> = HashMap::new();
-    // active[physical_col] = (start_row, start_cell_idx)
 
     for i in 0..rows.len() {
         let mut col = 0usize;
@@ -1239,9 +1427,6 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
                     let (sr, sc) = target.unwrap();
                     let target_cell = &rows[sr][sc];
 
-                    // Check for a conflict: attaching `^^` to a horizontally
-                    // merged cell while the current row has content in those
-                    // columns.
                     let mut conflict = false;
                     if target_cell.colspan > 1 {
                         let target_start: usize = rows[sr].iter().take(sc).map(|c| c.colspan).sum();
@@ -1294,8 +1479,6 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
     }
 }
 
-/// Physical columns whose multirow would be cut by the `\hline` *after*
-/// row `i`. Those columns are replaced by `\cline` ranges in the output.
 fn active_columns_at_hline(rows: &[Row], i: usize, ncols: usize) -> Vec<usize> {
     let mut active = vec![false; ncols];
     for (s, row) in rows.iter().enumerate() {
@@ -1320,11 +1503,6 @@ fn active_columns_at_hline(rows: &[Row], i: usize, ncols: usize) -> Vec<usize> {
         .collect()
 }
 
-/// Builds a `\multicolumn` column spec for `tabularx`/`xltabular` that
-/// makes a cell spanning `n` columns occupy exactly the horizontal space
-/// of those `n` `X`-columns:
-///
-///   total = n·\hsize + (n−1)·2\tabcolsep + (n−1)·\arrayrulewidth
 fn multicolumn_spec(n: usize, align_cmd: &str) -> String {
     let ts = (n - 1) * 2;
     let rw = n - 1;
@@ -1338,7 +1516,6 @@ fn multicolumn_spec(n: usize, align_cmd: &str) -> String {
     )
 }
 
-/// Emits one logical cell (may be colspan/rowspan/phantom).
 fn emit_cell(cell: &Cell, is_first: bool) -> String {
     if cell.phantom && cell.colspan == 1 {
         return String::new();
@@ -1347,8 +1524,6 @@ fn emit_cell(cell: &Cell, is_first: bool) -> String {
     let inner = if cell.phantom {
         String::new()
     } else if cell.rowspan > 1 {
-        // `*` form centres the content naturally and respects
-        // `\multirowsetup`.
         format!("\\multirow{{{}}}{{*}}{{{}}}", cell.rowspan, cell.content)
     } else {
         cell.content.clone()
@@ -1367,7 +1542,6 @@ fn emit_cell(cell: &Cell, is_first: bool) -> String {
     }
 }
 
-/// Emits a whole logical row as `a & b & c`.
 fn emit_row(row: &Row) -> String {
     let mut parts: Vec<String> = Vec::with_capacity(row.len());
     for (i, cell) in row.iter().enumerate() {
@@ -1376,7 +1550,6 @@ fn emit_row(row: &Row) -> String {
     parts.join(" & ")
 }
 
-/// Same as `emit_row` but wraps each logical cell's content in `\textbf`.
 fn emit_header_row(row: &Row) -> String {
     let bold: Row = row
         .iter()
@@ -1395,9 +1568,6 @@ fn emit_header_row(row: &Row) -> String {
     emit_row(&bold)
 }
 
-/// Emits the trailing rule for row `i`:
-/// * full `\hline` if no multirow crosses it;
-/// * one or more `\cline{a-b}` covering the non-crossed ranges otherwise.
 fn emit_trailing_rule(out: &mut String, processed: &[Row], row_idx: usize, ncols: usize) {
     let skip = active_columns_at_hline(processed, row_idx, ncols);
     if skip.is_empty() {
@@ -1433,7 +1603,6 @@ fn render_table<'a>(
     cfg: &Config,
     state: &mut RenderState<'_>,
 ) -> Result<()> {
-    // Read column alignments from the table AST.
     let alignments: Vec<TableAlignment> = match &node.data.borrow().value {
         NodeValue::Table(t) => t.alignments.clone(),
         _ => Vec::new(),
@@ -1445,8 +1614,6 @@ fn render_table<'a>(
             let mut cells = Vec::new();
             for cell_node in row_node.children() {
                 if let NodeValue::TableCell = &cell_node.data.borrow().value {
-                    // Extract the raw text first so that `^^` and `<<`
-                    // aren't escaped into `\textasciicircum{}` etc.
                     let raw_text = extract_text(cell_node).trim().to_string();
                     if raw_text == "<<" || raw_text == "^^" {
                         cells.push(raw_text);
@@ -1477,7 +1644,6 @@ fn render_table<'a>(
         None => (String::new(), String::new(), true, false),
     };
 
-    // Fold `<<` then `^^`.
     let mut processed: Vec<Row> = raw_rows
         .iter()
         .map(|r| merge_columns(r, &alignments))
@@ -1497,7 +1663,6 @@ fn render_table<'a>(
         }
     }
 
-    // Column type string: `L` / `C` / `R` per GFM alignment.
     let col_spec: String = (0..ncols)
         .map(|i| match alignments.get(i) {
             Some(TableAlignment::Left) => "L",
@@ -1611,7 +1776,7 @@ fn render_table<'a>(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Escape helpers (unchanged)
+// Escape helpers
 // ─────────────────────────────────────────────────────────────────────────
 
 pub fn escape_latex(s: &str) -> String {
@@ -1655,7 +1820,6 @@ fn strip_heading_number(s: &str) -> String {
 
 fn to_title_case_if_upper(s: &str) -> String {
     if s.chars().all(|c| !c.is_lowercase()) {
-        // Very naive title-casing: capitalise the first letter of each word.
         s.split_whitespace()
             .map(|w| {
                 let mut c = w.chars();
@@ -1672,8 +1836,6 @@ fn to_title_case_if_upper(s: &str) -> String {
 }
 
 fn compute_baseline(font_size: &str) -> String {
-    // Very rough heuristic: baseline ≈ 1.2 × font size.
-    // Font size strings are like "12pt", "14pt", etc.
     let num: f64 = font_size
         .trim_end_matches("pt")
         .trim_end_matches("PT")

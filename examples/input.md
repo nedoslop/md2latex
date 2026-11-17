@@ -211,7 +211,7 @@ int main() {
 
 ### 3.5 Поддержка PlantUML
 
-```plantuml #fig:seq-example Пример диаграммы последовательности
+```plantuml #fig:class-example Пример диаграммы последовательности (inline PlantUML)
 @startuml
 actor Пользователь
 participant "md2latex" as MD
@@ -223,7 +223,10 @@ PU --> MD: PNG
 MD --> Пользователь: PDF с диаграммой
 @enduml
 ```
-Ссылка на рисунок: см. рис. `\ref{fig:seq-example}`.
+
+Ссылка на рисунок: см. рис. `\ref{fig:class-example}`.
+
+![Пример PlantUML из внешнего файла](classes.puml "width=0.5")
 
 # ЗАКЛЮЧЕНИЕ
 

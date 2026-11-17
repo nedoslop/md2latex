@@ -2,6 +2,9 @@
 //! from Markdown into `<out_dir>/images/`, rewriting the Markdown links
 //! accordingly.
 //!
+//! **`.puml` files are skipped** — they're PlantUML sources, handled by the
+//! `markdown` module (rendered via `plantuml::PlantUml`).
+//!
 //! A simple on-disk cache (`.cache` in the images directory) records each
 //! image's size / mtime and the active conversion settings (format, DPI).
 //! On subsequent runs, files whose entry still matches are skipped — so
@@ -26,6 +29,7 @@ struct ImageStats {
     cached: usize,
     missing: usize,
     urls: usize,
+    skipped_plantuml: usize,
 }
 
 /// Walks through `md`, copies referenced images into `out_dir/images/`,
@@ -33,7 +37,9 @@ struct ImageStats {
 /// Markdown where every image link points to the new location.
 ///
 /// Remote URLs are left untouched; missing local files produce a warning.
-/// Repeated calls reuse `<out_dir>/images/.cache` to skip unchanged files.
+/// `.puml` references are left untouched — they're handled later by the
+/// markdown converter (rendered via PlantUML). Repeated calls reuse
+/// `<out_dir>/images/.cache` to skip unchanged files.
 pub fn prepare_images(
     md: &str,
     md_path: &Path,
@@ -61,6 +67,12 @@ pub fn prepare_images(
         let src = &caps[2];
         let rest = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
+        // PlantUML source files are handled by `markdown.rs`; leave them as-is.
+        if src.to_lowercase().ends_with(".puml") {
+            stats.skipped_plantuml += 1;
+            return caps[0].to_string();
+        }
+
         if src.starts_with("http://") || src.starts_with("https://") {
             log::warn(&format!("skipping URL image: {}", src));
             stats.urls += 1;
@@ -79,7 +91,6 @@ pub fn prepare_images(
             return caps[0].to_string();
         }
 
-        // Same source already handled in this document — reuse its name.
         if let Some(existing) = src_to_dest.get(&full_src) {
             return format!("![{}](images/{}{})", alt, existing, rest);
         }
@@ -98,7 +109,6 @@ pub fn prepare_images(
             .map(|s| format!(".{}", s.to_string_lossy()))
             .unwrap_or_default();
 
-        // Resolve a unique destination name.
         let mut counter = 1;
         let mut candidate = format!("{}{}", sanitize(&stem), ext);
         let mut final_name = final_dest_name(&candidate, convert_to);
@@ -110,8 +120,6 @@ pub fn prepare_images(
 
         let dest = images_out.join(&final_name);
 
-        // Cache lookup: destination must exist *and* match the current
-        // (source, settings) fingerprint.
         let src_fp = match src_fingerprint(&full_src) {
             Ok(fp) => fp,
             Err(e) => {
@@ -133,7 +141,6 @@ pub fn prepare_images(
             return format!("![{}](images/{}{})", alt, final_name, rest);
         }
 
-        // Regenerate.
         let processed_name = match convert_to {
             Some(_) => {
                 let target_ext = final_name
@@ -144,7 +151,6 @@ pub fn prepare_images(
                     Ok(()) => final_name.clone(),
                     Err(e) => {
                         log::warn(&format!("failed to convert {}: {}", full_src.display(), e));
-                        // Fallback: copy with original extension, uniquified.
                         let mut fb = 1;
                         let mut fallback_base = format!("{}{}", sanitize(&stem), ext);
                         while used_names.contains(&fallback_base) {
@@ -176,23 +182,23 @@ pub fn prepare_images(
         format!("![{}](images/{}{})", alt, processed_name, rest)
     });
 
-    // Drop entries whose output file disappeared, then persist.
     cache.prune_missing(&images_out);
     if let Err(e) = cache.save() {
         log::warn(&format!("failed to save image cache: {}", e));
     }
 
     log::info(&format!(
-        "images: {} processed, {} cached, {} missing, {} url(s)",
-        stats.processed, stats.cached, stats.missing, stats.urls
+        "images: {} processed, {} cached, {} missing, {} url(s), {} plantuml (skipped)",
+        stats.processed,
+        stats.cached,
+        stats.missing,
+        stats.urls,
+        stats.skipped_plantuml
     ));
 
     Ok(result.to_string())
 }
 
-/// Computes the final on-disk name given a sanitized base name and the
-/// optional target conversion format (mirrors `Path::with_extension`, which
-/// is what the pre-cache code used).
 fn final_dest_name(sanitized: &str, convert_to: Option<&str>) -> String {
     match convert_to {
         Some(fmt) => {
@@ -207,13 +213,10 @@ fn final_dest_name(sanitized: &str, convert_to: Option<&str>) -> String {
     }
 }
 
-/// Settings fingerprint: any change here invalidates every cache entry.
 fn settings_fingerprint(convert_to: Option<&str>, dpi: u32) -> String {
     format!("{}:{}", convert_to.unwrap_or(""), dpi)
 }
 
-/// `size:mtime_ns` fingerprint for the source file. Cheap and reliable for
-/// "did this file change since last build" — no need to hash the bytes.
 fn src_fingerprint(path: &Path) -> std::io::Result<String> {
     let meta = fs::metadata(path)?;
     let size = meta.len();
@@ -249,7 +252,6 @@ fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
     }
 }
 
-/// Rasterises a raster image into a single-page PDF at the given DPI.
 fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
     use printpdf::{Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, RawImage, XObjectTransform};
 
@@ -281,7 +283,6 @@ fn raster_to_pdf(src: &Path, dst: &Path, dpi: u32) -> Result<()> {
     Ok(())
 }
 
-/// Replaces characters that may be unsafe in filenames.
 fn sanitize(name: &str) -> String {
     name.chars()
         .map(|c| {
@@ -294,9 +295,6 @@ fn sanitize(name: &str) -> String {
         .collect()
 }
 
-/// Persistent on-disk cache: one `filename\tfingerprint\n` per line.
-/// Kept in TSV rather than TOML to avoid filename → key-escaping weirdness
-/// (filenames can contain `.`, `-`, etc. that TOML bare keys reject).
 struct ImageCache {
     path: PathBuf,
     entries: BTreeMap<String, String>,

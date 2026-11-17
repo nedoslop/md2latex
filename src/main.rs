@@ -52,8 +52,6 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
-    // Load .env (if any) so frontmatter `${VAR}` references can resolve.
-    // Shell-exported vars win — dotenvy only fills what isn't already set.
     let _ = dotenvy::dotenv();
 
     let total_start = Instant::now();
@@ -97,7 +95,6 @@ fn main() -> Result<()> {
     )
     .context("image preparation failed")?;
 
-    // Copy the .bib file next to the generated .tex so biber can find it.
     copy_bibliography(&cfg, &md_path, &out_dir).context("bibliography copy failed")?;
 
     let images_time = t.elapsed();
@@ -107,7 +104,11 @@ fn main() -> Result<()> {
         .context("failed to initialise PlantUML")?;
 
     let t = Instant::now();
-    let body = markdown::markdown_to_latex(&md_prepared, &cfg, plantuml.as_ref())
+    let md_dir = md_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    let body = markdown::markdown_to_latex(&md_prepared, &cfg, &md_dir, plantuml.as_ref())
         .context("Markdown conversion failed")?;
     let md_time = t.elapsed();
 
@@ -265,8 +266,6 @@ fn fmt_duration(d: Duration) -> String {
     }
 }
 
-/// Runs `xelatex` (and `biber` if needed), then `xelatex` twice more to
-/// stabilise the table of contents and cross-references.
 fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) -> Result<()> {
     let dir = tex_path.parent().unwrap();
 
