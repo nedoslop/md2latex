@@ -100,8 +100,8 @@ fn main() -> Result<()> {
     let images_time = t.elapsed();
 
     // ── PlantUML: подготовка JAR и рендерера ─────────────────────────────
-    let plantuml = plantuml::PlantUml::new(&cfg, &out_dir)
-        .context("failed to initialise PlantUML")?;
+    let plantuml =
+        plantuml::PlantUml::new(&cfg, &out_dir).context("failed to initialise PlantUML")?;
 
     let t = Instant::now();
     let md_dir = md_path

@@ -189,11 +189,7 @@ pub fn prepare_images(
 
     log::info(&format!(
         "images: {} processed, {} cached, {} missing, {} url(s), {} plantuml (skipped)",
-        stats.processed,
-        stats.cached,
-        stats.missing,
-        stats.urls,
-        stats.skipped_plantuml
+        stats.processed, stats.cached, stats.missing, stats.urls, stats.skipped_plantuml
     ));
 
     Ok(result.to_string())
