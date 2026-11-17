@@ -218,16 +218,19 @@
 \makeatletter
 \setlist[itemize]{
   label={{ itemize_label }},
-  wide=\dimexpr{{ paragraph_indent | trim }} + 3.5mm*(\@listdepth-1)\relax,
+  align=left,
+  labelindent=\dimexpr{{ paragraph_indent | trim }} + 1pt + 3.5mm*(\@listdepth-1)\relax,
   leftmargin=0pt,
+  itemindent=*,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
 
 \setlist[enumerate]{
   label={{ enumerate_label }},
-  wide=\dimexpr{{ paragraph_indent | trim }} + 3.5mm*(\@listdepth-1)\relax,
+  labelindent=\dimexpr{{ paragraph_indent | trim }} + 3.5mm*(\@listdepth-1)\relax,
   leftmargin=0pt,
+  itemindent=*,
   labelsep=0.5em,
   topsep=0pt, partopsep=0pt, parsep=0pt, itemsep=0pt
 }
@@ -275,22 +278,24 @@
 
 \titleformat{\section}[block]
   {\normalfont{% if section_bold %}\bfseries{% endif %}{% if section_align == "center" %}\centering{% else %}\raggedright{% endif %}\hyphenpenalty=10000\exhyphenpenalty=10000}
-  { {{- "" -}}{% if section_align != "center" %}\hspace{\parindent}{% endif %}\thesection}
-  {0.5em}
+  { {{- "" -}}{% if section_align != "center" %}\hspace*{ {{- paragraph_indent | trim -}} }{% endif %}\thesection}
+  {0.35em}
   {% if section_uppercase %}{\MakeUppercase}{% else %}{}{% endif %}
 \titlespacing*{\section}{0pt}{ {{- section_before_skip | trim -}} }{ {{- section_after_skip | trim -}} }
 
 \titleformat{\subsection}[block]
   {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
-  {\hspace{\parindent}\thesubsection}{0.5em}
+  {\hspace*{ {{- paragraph_indent | trim -}} }\thesubsection}
+  {0.35em}
   {}
 \titlespacing*{\subsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
 
 \titleformat{\subsubsection}[block]
   {\normalfont\bfseries\raggedright\hyphenpenalty=10000\exhyphenpenalty=10000}
-  {\hspace{\parindent}\thesubsubsection}{0.5em}
+  {\hspace*{ {{- paragraph_indent | trim -}} }\thesubsubsection}
+  {0.35em}
   {}
-\titlespacing*{\subsubsection}{0pt}{\baselineskip}{\baselineskip}
+\titlespacing*{\subsubsection}{0pt}{ {{- subsection_before_skip | trim -}} }{ {{- subsection_after_skip | trim -}} }
 
 % ========== Table of contents ==========
 \usepackage{tocloft}

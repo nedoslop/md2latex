@@ -64,9 +64,9 @@ table_caption_above          = true
 default_figure_width         = "0.8"
 
 section_before_skip    = "0pt"
-section_after_skip     = "\\baselineskip"
-subsection_before_skip = "\\baselineskip"
-subsection_after_skip  = "\\baselineskip"
+section_after_skip     = "12pt"
+subsection_before_skip = "12pt"
+subsection_after_skip  = "12pt"
 
 language       = "russian"
 other_language = "english"
