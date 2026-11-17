@@ -10,6 +10,7 @@ mod config;
 mod images;
 mod log;
 mod markdown;
+mod plantuml;
 mod template;
 
 use anyhow::{Context, Result};
@@ -101,9 +102,13 @@ fn main() -> Result<()> {
 
     let images_time = t.elapsed();
 
+    // ── PlantUML: подготовка JAR и рендерера ─────────────────────────────
+    let plantuml = plantuml::PlantUml::new(&cfg, &out_dir)
+        .context("failed to initialise PlantUML")?;
+
     let t = Instant::now();
-    let body =
-        markdown::markdown_to_latex(&md_prepared, &cfg).context("Markdown conversion failed")?;
+    let body = markdown::markdown_to_latex(&md_prepared, &cfg, plantuml.as_ref())
+        .context("Markdown conversion failed")?;
     let md_time = t.elapsed();
 
     let t = Instant::now();

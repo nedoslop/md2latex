@@ -71,6 +71,10 @@ pub struct Config {
     #[serde(default)]
     pub code: Code,
 
+    /// PlantUML rendering settings.
+    #[serde(default)]
+    pub plantuml: PlantUmlConfig,
+
     #[serde(default = "default_extra")]
     pub extra: toml::Value,
 }
@@ -227,6 +231,36 @@ impl Default for Code {
         }
     }
 }
+
+// ── PlantUML ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct PlantUmlConfig {
+    /// Включить/выключить рендеринг PlantUML.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Путь к готовому `plantuml.jar`. Если не задан — JAR будет скачан
+    /// автоматически в `<output_dir>/plantuml/plantuml.jar`.
+    #[serde(default)]
+    pub jar_path: Option<String>,
+
+    /// Команда запуска Java (по умолчанию `java`).
+    #[serde(default)]
+    pub java_path: Option<String>,
+}
+
+impl Default for PlantUmlConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            jar_path: None,
+            java_path: None,
+        }
+    }
+}
+
+// ── Остальные структуры без изменений ───────────────────────────────────
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Labels {

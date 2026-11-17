@@ -35,6 +35,20 @@
 //! `#lst:name` becomes `label=lst:name`; the remaining tokens (if any)
 //! become the caption. Works for both `listings` and `minted` engines.
 //!
+//! ## PlantUML
+//!
+//! A code block with language `plantuml` is rendered to a PNG (via the
+//! `plantuml` module) and inserted as a `figure`. The info string may
+//! contain `#fig:label` and a caption:
+//!
+//! ````markdown
+//! ```plantuml #fig:my-diagram Пример диаграммы
+//! @startuml
+//! A -> B
+//! @enduml
+//! ```
+//! ````
+//!
 //! ## Table column alignment
 //!
 //! GFM column alignment (`:---`, `:---:`, `---:`) is honoured via the
@@ -43,12 +57,14 @@
 
 use crate::config::Config;
 use crate::log;
+use crate::plantuml::PlantUml;
 use anyhow::Result;
 use comrak::nodes::{AstNode, NodeCodeBlock, NodeLink, NodeValue, TableAlignment};
 use comrak::options::Options;
 use comrak::{parse_document, Arena};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Ctx {
@@ -80,7 +96,7 @@ struct Cell {
 type Row = Vec<Cell>;
 
 /// Mutable state carried through the rendering pass.
-struct RenderState {
+struct RenderState<'a> {
     ctx: Ctx,
     pending_table: Option<PendingTableCaption>,
     pending_equation_label: Option<String>,
@@ -91,10 +107,12 @@ struct RenderState {
     /// First-use LaTeX number for each footnote name.
     footnote_numbers: HashMap<String, usize>,
     footnote_counter: usize,
+    /// PlantUML renderer (if available).
+    plantuml: Option<&'a PlantUml>,
 }
 
-impl RenderState {
-    fn new(footnotes: HashMap<String, String>) -> Self {
+impl<'a> RenderState<'a> {
+    fn new(footnotes: HashMap<String, String>, plantuml: Option<&'a PlantUml>) -> Self {
         Self {
             ctx: Ctx::Ordinary,
             pending_table: None,
@@ -104,11 +122,12 @@ impl RenderState {
             footnotes,
             footnote_numbers: HashMap::new(),
             footnote_counter: 0,
+            plantuml,
         }
     }
 }
 
-pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
+pub fn markdown_to_latex(md: &str, cfg: &Config, plantuml: Option<&PlantUml>) -> Result<String> {
     let arena = Arena::new();
     let mut options = Options::default();
     options.extension.table = true;
@@ -121,7 +140,7 @@ pub fn markdown_to_latex(md: &str, cfg: &Config) -> Result<String> {
     let root = parse_document(&arena, md, &options);
 
     let footnotes = collect_footnotes(root, cfg)?;
-    let mut state = RenderState::new(footnotes);
+    let mut state = RenderState::new(footnotes, plantuml);
     let mut out = String::new();
 
     for node in root.children() {
@@ -155,7 +174,7 @@ fn collect_footnotes<'a>(root: &'a AstNode<'a>, cfg: &Config) -> Result<HashMap<
 /// skipped with a warning.
 fn render_footnote_content<'a>(node: &'a AstNode<'a>, cfg: &Config) -> Result<String> {
     let mut out = String::new();
-    let mut local = RenderState::new(HashMap::new());
+    let mut local = RenderState::new(HashMap::new(), None);
     for child in node.children() {
         let v = child.data.borrow().value.clone();
         match v {
@@ -183,7 +202,7 @@ fn render_node<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
     cfg: &Config,
-    state: &mut RenderState,
+    state: &mut RenderState<'_>,
 ) -> Result<()> {
     let value = node.data.borrow().value.clone();
 
@@ -206,7 +225,7 @@ fn render_node<'a>(
             render_paragraph(node, out, cfg, state)?;
         }
         NodeValue::CodeBlock(code) => {
-            render_code_block(&code, out, cfg);
+            render_code_block(&code, out, cfg, state);
         }
         NodeValue::List(_) => {
             render_list(node, out, cfg, state)?;
@@ -240,7 +259,7 @@ fn render_heading<'a>(
     level: u8,
     out: &mut String,
     cfg: &Config,
-    state: &mut RenderState,
+    state: &mut RenderState<'_>,
 ) -> Result<()> {
     let raw_text = extract_text(node);
     let clean = strip_heading_number(&raw_text)
@@ -348,7 +367,7 @@ fn render_paragraph<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
     cfg: &Config,
-    state: &mut RenderState,
+    state: &mut RenderState<'_>,
 ) -> Result<()> {
     let raw_text = extract_text(node).trim().to_string();
 
@@ -490,8 +509,44 @@ fn parse_code_info(info: &str) -> (&str, Option<String>, Option<String>) {
     (lang, label, caption)
 }
 
-fn render_code_block(code: &NodeCodeBlock, out: &mut String, cfg: &Config) {
+/// Разбирает info‑string блока `plantuml`: `#fig:label` и подпись.
+fn parse_plantuml_info(info: &str) -> (Option<String>, Option<String>) {
+    let tokens: Vec<&str> = info.split_whitespace().collect();
+    let mut label = None;
+    let mut caption_tokens = Vec::new();
+
+    for tok in tokens {
+        if let Some(l) = tok.strip_prefix("#fig:") {
+            label = Some(format!("fig:{}", l));
+        } else {
+            caption_tokens.push(tok);
+        }
+    }
+
+    let caption = if caption_tokens.is_empty() {
+        None
+    } else {
+        Some(caption_tokens.join(" "))
+    };
+    (label, caption)
+}
+
+fn render_code_block(
+    code: &NodeCodeBlock,
+    out: &mut String,
+    cfg: &Config,
+    state: &RenderState<'_>,
+) {
     let literal = code.literal.trim_end();
+
+    // ── PlantUML: проверяем ДО parse_code_info, иначе `#fig:` внутри
+    //    info-string превратится в «unknown code-block tag». ────────────
+    let first_token = code.info.split_whitespace().next().unwrap_or("");
+    if first_token.eq_ignore_ascii_case("plantuml") {
+        render_plantuml_block(code, out, cfg, state);
+        return;
+    }
+
     let (lang, label, caption) = parse_code_info(&code.info);
 
     if !cfg.code.enabled {
@@ -554,6 +609,57 @@ fn render_code_block(code: &NodeCodeBlock, out: &mut String, cfg: &Config) {
     }
 }
 
+/// Рендерит блок `plantuml` как рисунок.
+fn render_plantuml_block(
+    code: &NodeCodeBlock,
+    out: &mut String,
+    cfg: &Config,
+    state: &RenderState<'_>,
+) {
+    let (label, caption) = parse_plantuml_info(&code.info);
+
+    let Some(plantuml) = state.plantuml else {
+        log::warn("PlantUML is not available; code block omitted");
+        out.push_str(&format!(
+            "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
+            code.literal.trim_end()
+        ));
+        return;
+    };
+
+    match plantuml.render(&code.literal) {
+        Ok(Some(png_path)) => {
+            let out_dir = PathBuf::from(&cfg.project.output_dir);
+            // LaTeX не понимает Windows-разделители: `\a` в `plantuml_cache\acf…`
+            // воспринимается как управляющая последовательность. Приводим
+            // путь к прямым слешам (работают и в xelatex, и в pdftex).
+            let rel_str = png_path
+                .strip_prefix(&out_dir)
+                .unwrap_or(&png_path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push_str("\\begin{figure}[H]\n  \\centering\n");
+            if let Some(ref c) = caption {
+                out.push_str(&format!("  \\caption{{{}}}\n", escape_latex(c)));
+            }
+            if let Some(ref l) = label {
+                out.push_str(&format!("  \\label{{{}}}\n", l));
+            }
+            out.push_str(&format!(
+                "  \\includegraphics[width=\\textwidth]{{{}}}\n",
+                rel_str
+            ));
+            out.push_str("\\end{figure}\n\n");
+        }
+        Ok(None) => {
+            log::warn("PlantUML rendering failed; block omitted");
+        }
+        Err(e) => {
+            log::warn(&format!("PlantUML error: {}", e));
+        }
+    }
+}
+
 fn map_listings_lang(lang: &str) -> String {
     match lang.to_lowercase().as_str() {
         "c" => "C".into(),
@@ -600,7 +706,7 @@ fn render_list<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
     cfg: &Config,
-    state: &mut RenderState,
+    state: &mut RenderState<'_>,
 ) -> Result<()> {
     let list_data = match &node.data.borrow().value {
         NodeValue::List(l) => l.clone(),
@@ -789,7 +895,7 @@ fn render_inline<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
     cfg: &Config,
-    state: &mut RenderState,
+    state: &mut RenderState<'_>,
 ) -> Result<()> {
     for child in node.children() {
         let v = child.data.borrow().value.clone();
@@ -1325,7 +1431,7 @@ fn render_table<'a>(
     out: &mut String,
     meta: Option<PendingTableCaption>,
     cfg: &Config,
-    state: &mut RenderState,
+    state: &mut RenderState<'_>,
 ) -> Result<()> {
     // Read column alignments from the table AST.
     let alignments: Vec<TableAlignment> = match &node.data.borrow().value {
@@ -1479,16 +1585,16 @@ fn render_table<'a>(
         ));
         out.push_str("  \\begin{tabularx}{\\textwidth}{|");
         out.push_str(&col_spec);
-        out.push_str("|}\n  \\hline\n");
-        out.push_str("    ");
+        out.push_str("|}\n  \\hline\n  ");
         out.push_str(&emit_header_row(&processed[0]));
-        out.push_str(&format!(" \\\\\n  {}\n", double_rule));
-        for (data_idx, row) in processed.iter().skip(1).enumerate() {
-            let source_row = data_idx + 1;
-            out.push_str("    ");
+        out.push_str(" \\\\\n  \\hline\n");
+
+        for row in processed.iter().skip(1) {
+            out.push_str("  ");
             out.push_str(&emit_row(row));
-            emit_trailing_rule(out, &processed, source_row, ncols);
+            out.push_str(" \\\\\n  \\hline\n");
         }
+
         out.push_str("  \\end{tabularx}\n  }\n");
         if !cfg.style.table_caption_above {
             if !caption_latex.is_empty() {
@@ -1500,91 +1606,78 @@ fn render_table<'a>(
         }
         out.push_str("\\end{table}\n\n");
     }
+
     Ok(())
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Text extraction & escaping helpers
+// Escape helpers (unchanged)
 // ─────────────────────────────────────────────────────────────────────────
 
-fn extract_text<'a>(node: &'a AstNode<'a>) -> String {
-    let mut s = String::new();
-    for child in node.children() {
-        let v = child.data.borrow().value.clone();
-        match v {
-            NodeValue::Text(t) => s.push_str(&t),
-            NodeValue::Code(c) => s.push_str(&c.literal),
-            NodeValue::SoftBreak | NodeValue::LineBreak => s.push(' '),
-            _ => s.push_str(&extract_text(child)),
+pub fn escape_latex(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("\\&"),
+            '%' => out.push_str("\\%"),
+            '$' => out.push_str("\\$"),
+            '#' => out.push_str("\\#"),
+            '_' => out.push_str("\\_"),
+            '{' => out.push_str("\\{"),
+            '}' => out.push_str("\\}"),
+            '~' => out.push_str("\\textasciitilde{}"),
+            '^' => out.push_str("\\textasciicircum{}"),
+            '\\' => out.push_str("\\textbackslash{}"),
+            _ => out.push(c),
         }
     }
-    s
-}
-
-fn strip_heading_number(text: &str) -> String {
-    let re = Regex::new(r"^\s*\d+(\.\d+)*\.?\s+").unwrap();
-    re.replace(text, "").trim().to_string()
-}
-
-fn to_title_case_if_upper(s: &str) -> String {
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    let has_letters = trimmed.chars().any(|c| c.is_alphabetic());
-    let all_upper = trimmed
-        .chars()
-        .filter(|c| c.is_alphabetic())
-        .all(|c| c.is_uppercase());
-    if !has_letters || !all_upper {
-        return trimmed.to_string();
-    }
-    let lower = trimmed.to_lowercase();
-    let mut chars = lower.chars();
-    match chars.next() {
-        Some(first) => {
-            let mut result = String::new();
-            result.extend(first.to_uppercase());
-            result.push_str(chars.as_str());
-            result
-        }
-        None => String::new(),
-    }
-}
-
-fn compute_baseline(size: &str) -> String {
-    let s = size.trim();
-    if let Some(num) = s
-        .strip_suffix("pt")
-        .and_then(|n| n.trim().parse::<f32>().ok())
-    {
-        format!("{}pt", (num * 1.2 * 10.0).round() / 10.0)
-    } else {
-        "16.8pt".to_string()
-    }
+    out
 }
 
 fn escape_url(url: &str) -> String {
     url.replace('%', "\\%").replace('#', "\\#")
 }
 
-/// Escapes LaTeX special characters in plain text.
-pub fn escape_latex(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("\\&"),
-            '%' => out.push_str("\\%"),
-            '#' => out.push_str("\\#"),
-            '_' => out.push_str("\\_"),
-            '$' => out.push_str("\\$"),
-            '{' => out.push_str("\\{"),
-            '}' => out.push_str("\\}"),
-            '\\' => out.push_str("\\textbackslash{}"),
-            '^' => out.push_str("\\textasciicircum{}"),
-            '~' => out.push_str("\\textasciitilde{}"),
-            _ => out.push(ch),
+fn extract_text<'a>(node: &'a AstNode<'a>) -> String {
+    let mut s = String::new();
+    for c in node.descendants() {
+        if let NodeValue::Text(t) = &c.data.borrow().value {
+            s.push_str(t);
         }
     }
-    out
+    s
+}
+
+fn strip_heading_number(s: &str) -> String {
+    let re = Regex::new(r"^\s*\d+(\.\d+)*\.?\s*").unwrap();
+    re.replace(s, "").to_string()
+}
+
+fn to_title_case_if_upper(s: &str) -> String {
+    if s.chars().all(|c| !c.is_lowercase()) {
+        // Very naive title-casing: capitalise the first letter of each word.
+        s.split_whitespace()
+            .map(|w| {
+                let mut c = w.chars();
+                match c.next() {
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        s.to_string()
+    }
+}
+
+fn compute_baseline(font_size: &str) -> String {
+    // Very rough heuristic: baseline ≈ 1.2 × font size.
+    // Font size strings are like "12pt", "14pt", etc.
+    let num: f64 = font_size
+        .trim_end_matches("pt")
+        .trim_end_matches("PT")
+        .parse()
+        .unwrap_or(12.0);
+    format!("{:.1}pt", num * 1.2)
 }

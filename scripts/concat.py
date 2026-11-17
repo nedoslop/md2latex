@@ -8,6 +8,7 @@ files = [
     'src/log.rs',
     'src/main.rs',
     'src/markdown.rs',
+    'src/plantuml.rs',
     'src/template.rs',
     'profiles/sibfu/base.tex.tera',
     'profiles/sibfu/course_work.tex.tera',

@@ -26,6 +26,9 @@ serde_yaml_ng = "0.10"
 dotenvy = "0.15"
 console = "0.16"
 comfy-table = "8"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+serde_json = "1"
+sha2 = "0.10"
 
 [build-dependencies]
 winresource = "0.1.34"
