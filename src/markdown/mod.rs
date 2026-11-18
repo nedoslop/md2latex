@@ -149,7 +149,7 @@ pub fn markdown_to_latex(
     }
     if let Some(pt) = state.pending_table.take() {
         out.push_str(&format_caption(&pt.caption));
-        out.push('\n');
+        out.push_str("\n\n");
     }
     Ok(out)
 }
@@ -171,7 +171,7 @@ fn render_node<'a>(
     ) {
         if let Some(pt) = state.pending_table.take() {
             out.push_str(&format_caption(&pt.caption));
-            out.push('\n');
+            out.push_str("\n\n");
         }
     }
     match value {
@@ -197,7 +197,7 @@ fn render_node<'a>(
             for child in node.children() {
                 render_node(child, out, cfg, state)?;
             }
-            out.push_str("\\end{quote}\n");
+            out.push_str("\\end{quote}\n\n");
         }
         NodeValue::FootnoteDefinition(_) => {}
         _ => {

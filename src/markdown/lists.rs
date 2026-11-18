@@ -62,6 +62,6 @@ pub(crate) fn render_list<'a>(
         }
         out.push('\n');
     }
-    out.push_str(&format!("\\end{{{}}}\n", env));
+    out.push_str(&format!("\\end{{{}}}\n\n", env));
     Ok(())
 }

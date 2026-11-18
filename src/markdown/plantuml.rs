@@ -65,7 +65,7 @@ pub(crate) fn render_plantuml_block(
     let Some(plantuml) = state.plantuml else {
         log::warn("PlantUML is not available; code block omitted");
         out.push_str(&format!(
-            "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n",
+            "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
             code.literal.trim_end()
         ));
         return;
@@ -85,14 +85,14 @@ pub(crate) fn render_plantuml_block(
         Ok(None) => {
             log::warn("PlantUML rendering failed; block omitted");
             out.push_str(&format!(
-                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n",
+                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
                 code.literal.trim_end()
             ));
         }
         Err(e) => {
             log::warn(&format!("PlantUML error: {}", e));
             out.push_str(&format!(
-                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n",
+                "\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n\n",
                 code.literal.trim_end()
             ));
         }
@@ -201,7 +201,7 @@ fn emit_plantuml_figure(
             out.push_str(&format!("  \\label{{{}}}\n", l));
         }
     }
-    out.push_str("\\end{figure}\n");
+    out.push_str("\\end{figure}\n\n");
 }
 
 pub(crate) fn is_plantuml_file(url: &str) -> bool {

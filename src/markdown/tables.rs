@@ -403,7 +403,7 @@ pub(crate) fn render_table<'a>(
             out.push_str(&emit_row(&row_data));
             emit_trailing_rule(out, &processed, source_row, ncols);
         }
-        out.push_str("  \\end{xltabular}\n}\n");
+        out.push_str("  \\end{xltabular}\n  }\n\n");
     } else {
         out.push_str("\\begin{table}[H]\n\\centering\n");
         if cfg.style.table_caption_above {
@@ -437,7 +437,7 @@ pub(crate) fn render_table<'a>(
                 out.push_str(&format!("  \\label{{{}}}\n", label_latex));
             }
         }
-        out.push_str("\\end{table}\n");
+        out.push_str("\\end{table}\n\n");
     }
     Ok(())
 }

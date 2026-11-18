@@ -106,12 +106,12 @@ fn emit_listing(
         }
         if opts.is_empty() {
             out.push_str(&format!(
-                "\\begin{{minted}}{{{}}}\n{}\n\\end{{minted}}\n",
+                "\\begin{{minted}}{{{}}}\n{}\n\\end{{minted}}\n\n",
                 m, literal
             ));
         } else {
             out.push_str(&format!(
-                "\\begin{{minted}}[{}]{{{}}}\n{}\n\\end{{minted}}\n",
+                "\\begin{{minted}}[{}]{{{}}}\n{}\n\\end{{minted}}\n\n",
                 opts.join(", "),
                 m,
                 literal
@@ -131,12 +131,12 @@ fn emit_listing(
         }
         if opts.is_empty() {
             out.push_str(&format!(
-                "\\begin{{lstlisting}}\n{}\n\\end{{lstlisting}}\n",
+                "\\begin{{lstlisting}}\n{}\n\\end{{lstlisting}}\n\n",
                 literal
             ));
         } else {
             out.push_str(&format!(
-                "\\begin{{lstlisting}}[{}]\n{}\n\\end{{lstlisting}}\n",
+                "\\begin{{lstlisting}}[{}]\n{}\n\\end{{lstlisting}}\n\n",
                 opts.join(", "),
                 literal
             ));

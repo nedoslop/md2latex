@@ -141,7 +141,7 @@ pub(crate) fn render_image_block<'a>(
             out.push_str(&format!("  \\label{{{}}}\n", l));
         }
     }
-    out.push_str("\\end{figure}\n");
+    out.push_str("\\end{figure}\n\n");
     Ok(())
 }
 

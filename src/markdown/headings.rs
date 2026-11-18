@@ -54,7 +54,7 @@ pub(crate) fn render_heading<'a>(
                 out.push_str("\\clearpage\n");
             }
             out.push_str(&format!(
-                "\\section{{{}}}\n",
+                "\\section{{{}}}\n\n",
                 escape_latex(&to_title_case_if_upper(&clean))
             ));
         }
@@ -71,7 +71,7 @@ pub(crate) fn render_heading<'a>(
         }
         if state.ctx == Ctx::StructuralUnnumbered {
             out.push_str(&format!(
-                "\\textbf{{{}}}\\par\n",
+                "\\textbf{{{}}}\\par\n\n",
                 escape_latex(&to_title_case_if_upper(&clean))
             ));
             return Ok(());
@@ -99,14 +99,14 @@ pub(crate) fn render_heading<'a>(
         if !numbered {
             let toc_cmd = cmd.trim_end_matches('*');
             out.push_str(&format!(
-                "\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n",
+                "\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n\n",
                 toc_cmd,
                 escape_latex(&display),
                 cmd,
                 escape_latex(&display)
             ));
         } else {
-            out.push_str(&format!("\\{}{{{}}}\n", cmd, escape_latex(&display)));
+            out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(&display)));
         }
     }
     Ok(())
@@ -142,7 +142,7 @@ fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Resu
         "\\phantomsection\n\
          \\addcontentsline{{toc}}{{section}}{{{}}}\n\
          {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n\
-         \\vspace{{\\baselineskip}}\n",
+         \\vspace{{\\baselineskip}}\n\n",
         escape_latex(&display),
         escape_latex(&display)
     ));
@@ -212,7 +212,7 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
             escape_latex(&to_title_case_if_upper(title))
         ));
     }
-    out.push_str("\\vspace{\\baselineskip}\n");
+    out.push_str("\\vspace{\\baselineskip}\n\n");
     Ok(())
 }
 
