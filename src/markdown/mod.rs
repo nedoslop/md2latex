@@ -244,7 +244,7 @@ fn render_paragraph<'a>(
                 if let Some(lbl) = state.pending_equation_label.take() {
                     eq.push_str(&format!("\n\\label{{{}}}", lbl));
                 }
-                eq.push_str("\n\\end{equation}\n");
+                eq.push_str("\n\\end{equation}\n\n");
                 out.push_str(&eq);
                 return Ok(());
             }
@@ -293,7 +293,7 @@ fn render_paragraph<'a>(
     inline_result?;
     if !p.trim().is_empty() {
         out.push_str(p.trim());
-        out.push('\n');
+        out.push_str("\n\n");
     }
     for (alt, url, title) in puml_images {
         render_plantuml_file(&alt, &url, &title, out, cfg, state)?;
