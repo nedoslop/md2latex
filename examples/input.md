@@ -221,8 +221,7 @@ actor Пользователь
 participant "md2latex" as MD
 participant "PlantUML" as PU
 
-// Тут баг рендера
-Пользователь -> MD: Запускает сборку
+Пользователь -> MD: Запускает сборку ТУТ БАГ РЕНДЕРА
 MD -> PU: Рендерит блок plantuml
 PU --> MD: PNG
 MD --> Пользователь: PDF с диаграммой
