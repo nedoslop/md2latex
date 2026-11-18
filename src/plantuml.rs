@@ -1,14 +1,13 @@
-//! PlantUML support: скачивание JAR, проверка Java, рендеринг и кеширование.
+//! PlantUML support: JAR downloading, Java check, rendering and caching.
 //!
-//! Блоки кода с языком `plantuml` превращаются в PNG-изображения,
-//! которые затем вставляются в документ как обычные иллюстрации (`figure`).
+//! Code blocks with language `plantuml` are converted to PNG images, 
+//! which are then inserted into the document as regular illustrations (`figure`).
 //!
-//! JAR скачивается автоматически с GitHub (последний стабильный релиз)
-//! в `<output_dir>/plantuml/plantuml.jar`, если его там нет.
+//! The JAR is automatically downloaded from GitHub (latest stable release) 
+//! to `<output_dir>/plantuml/plantuml.jar` if it's not already there.
 //!
-//! Кеш: `<output_dir>/plantuml_cache/<sha256>.png`. Ключ — SHA-256 от
-//! исходного кода PlantUML. При повторном использовании того же кода
-//! рендеринг не выполняется.
+//! Cache: `<output_dir>/plantuml_cache/<sha256>.png`. The key is the SHA-256 
+//! of the PlantUML source code. Reusing the same code skips rendering.
 
 use crate::config::Config;
 use crate::log;
@@ -28,12 +27,11 @@ pub struct PlantUml {
 }
 
 impl PlantUml {
-    /// Подготавливает PlantUML: проверяет Java, при необходимости
-    /// скачивает JAR, создаёт каталог кеша.
+    /// Prepares PlantUML: checks Java, downloads the JAR if necessary, 
+    /// creates the cache directory.
     ///
-    /// Возвращает `None`, если PlantUML недоступен (нет Java, не удалось
-    /// скачать JAR). В этом случае вызывающий код должен пропустить
-    /// рендеринг и вывести предупреждение.
+    /// Returns `None` if PlantUML is unavailable (no Java, failed to download JAR). 
+    /// In this case, the caller should skip rendering and emit a warning.
     pub fn new(cfg: &Config, out_dir: &Path) -> Result<Option<Self>> {
         if !cfg.plantuml.enabled {
             log::info("PlantUML disabled in config");
@@ -46,7 +44,7 @@ impl PlantUml {
             .clone()
             .unwrap_or_else(|| "java".into());
 
-        // Проверка Java
+        // Check Java
         let java_ok = Command::new(&java_cmd)
             .arg("-version")
             .output()
@@ -56,20 +54,20 @@ impl PlantUml {
         if !java_ok {
             log::warn(&format!(
                 "Java not found (`{} -version` failed). \
-                 PlantUML rendering will be skipped. \
-                 Install a JRE (Java 8+) or set `plantuml.java_path` in the profile.",
+                PlantUML rendering will be skipped. \
+                Install a JRE (Java 8+) or set `plantuml.java_path` in the profile.",
                 java_cmd
             ));
             return Ok(None);
         }
 
-        // JAR: либо из конфига, либо скачиваем в out_dir/plantuml/
+        // JAR: either from config, or download to out_dir/plantuml/
         let jar_path = if let Some(p) = &cfg.plantuml.jar_path {
             let p = PathBuf::from(p);
             if !p.is_file() {
                 log::warn(&format!(
                     "plantuml.jar not found at configured path: {}; \
-                     falling back to auto-download",
+                    falling back to auto-download",
                     p.display()
                 ));
                 download_jar_to_default_location(out_dir)?
@@ -94,28 +92,25 @@ impl PlantUml {
             jar_path.display(),
             cache_dir.display()
         ));
-
         Ok(Some(Self {
             jar_path,
             java_cmd,
             cache_dir,
         }))
     }
-    /// Рендерит PlantUML-код в PNG. Возвращает путь к файлу кеша.
+
+    /// Renders PlantUML code to PNG. Returns the path to the cache file.
     ///
-    /// Если рендеринг не удался — возвращает `Ok(None)` (предупреждение
-    /// уже выведено).
+    /// If rendering fails, returns `Ok(None)` (warning already emitted).
     pub fn render(&self, code: &str) -> Result<Option<PathBuf>> {
         let hash = sha256_hex(code);
         let png_path = self.cache_dir.join(format!("{}.png", hash));
-
         if png_path.is_file() {
             return Ok(Some(png_path));
         }
 
-        // Пишем .puml прямо в cache_dir — тогда PlantUML создаст `<hash>.png`
-        // рядом с ним, без всяких `-o` и tempdir (которые на Windows
-        // иногда не срабатывают для абсолютных путей).
+        // Write .puml directly into cache_dir — then PlantUML will create `<hash>.png` 
+        // next to it, without any `-o` or tempdir (which sometimes fail on Windows for absolute paths).
         let puml_path = self.cache_dir.join(format!("{}.puml", hash));
         fs::write(&puml_path, code)
             .with_context(|| format!("failed to write {}", puml_path.display()))?;
@@ -128,11 +123,10 @@ impl PlantUml {
             .output()
             .with_context(|| format!("failed to spawn `{}`", self.java_cmd));
 
-        // .puml больше не нужен в любом случае.
+        // .puml is no longer needed in any case.
         let _ = fs::remove_file(&puml_path);
 
         let output = output?;
-
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             log::warn(&format!(
@@ -150,30 +144,26 @@ impl PlantUml {
             ));
             return Ok(None);
         }
-
         Ok(Some(png_path))
     }
 }
 
-/// Скачивает последний стабильный `plantuml.jar` с GitHub в
-/// `<out_dir>/plantuml/plantuml.jar`.
+/// Downloads the latest stable `plantuml.jar` from GitHub to `<out_dir>/plantuml/plantuml.jar`.
 fn download_jar_to_default_location(out_dir: &Path) -> Result<PathBuf> {
     let dir = out_dir.join("plantuml");
     fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
-
     let jar_path = dir.join("plantuml.jar");
     if jar_path.is_file() {
         return Ok(jar_path);
     }
 
     log::info("Downloading latest PlantUML JAR from GitHub...");
-
     let client = Client::builder()
         .user_agent("md2latex-gost/1.0 (PlantUML auto-downloader)")
         .build()
         .context("failed to build HTTP client")?;
 
-    // Последний стабильный релиз (GitHub сам отфильтровывает pre-release).
+    // Latest stable release (GitHub filters out pre-releases).
     let release_url = "https://api.github.com/repos/plantuml/plantuml/releases/latest";
     let release: Value = client
         .get(release_url)
@@ -188,7 +178,7 @@ fn download_jar_to_default_location(out_dir: &Path) -> Result<PathBuf> {
         .as_array()
         .context("release has no `assets` array")?;
 
-    // Ищем JAR, исключая javadoc/sources.
+    // Look for the JAR, excluding javadoc/sources.
     let jar_asset = assets
         .iter()
         .find(|a| {
@@ -216,11 +206,10 @@ fn download_jar_to_default_location(out_dir: &Path) -> Result<PathBuf> {
         .with_context(|| format!("failed to write {}", jar_path.display()))?;
 
     log::success(&format!("PlantUML JAR downloaded: {}", jar_path.display()));
-
     Ok(jar_path)
 }
 
-/// SHA-256 в hex.
+/// SHA-256 in hex.
 fn sha256_hex(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s.as_bytes());
