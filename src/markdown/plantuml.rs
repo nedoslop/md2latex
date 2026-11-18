@@ -9,9 +9,7 @@ use comrak::nodes::NodeCodeBlock;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::images::{
-    normalize_height_value, normalize_width_value, parse_image_title, ImageSize,
-};
+use super::images::{normalize_height_value, normalize_width_value, parse_image_title, ImageSize};
 use super::state::RenderState;
 use super::util::format_caption;
 

@@ -131,10 +131,7 @@ pub(crate) fn render_image_block<'a>(
     if opts.is_empty() {
         out.push_str(&format!("  \\includegraphics{{{}}}\n", src));
     } else {
-        out.push_str(&format!(
-            "  \\includegraphics[{}]{{{}}}\n",
-            opts, src
-        ));
+        out.push_str(&format!("  \\includegraphics[{}]{{{}}}\n", opts, src));
     }
     if cfg.style.figure_caption_below {
         if let Some(ref c) = final_caption {
