@@ -228,7 +228,7 @@ MD --> Пользователь: PDF с диаграммой
 @enduml
 ```
 
-![Пример PlantUML из внешнего файла](classes.puml "width=0.5")
+![Пример PlantUML из внешнего файла](classes.puml "width=orig")
 
 # ЗАКЛЮЧЕНИЕ
 
