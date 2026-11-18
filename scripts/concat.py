@@ -16,7 +16,7 @@ files = [
     'src/markdown/images.rs',
     'src/markdown/inline.rs',
     'src/markdown/lists.rs',
-    'src/markdown/mode.rs',
+    'src/markdown/mod.rs',
     'src/markdown/plantuml.rs',
     'src/markdown/state.rs',
     'src/markdown/tables.rs',
