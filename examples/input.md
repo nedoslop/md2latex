@@ -200,6 +200,8 @@ int main() {
 
 ### 3.5 Поддержка PlantUML
 
+Ссылка на рисунок: см. рис. {fig:class-example}.
+
 ```plantuml render=true #fig:class-example Пример диаграммы последовательности (inline PlantUML)
 @startuml
 actor Пользователь
@@ -212,8 +214,6 @@ PU --> MD: PNG
 MD --> Пользователь: PDF с диаграммой
 @enduml
 ```
-
-Ссылка на рисунок: см. рис. {fig:class-example}.
 
 ```plantuml Код примера
 @startuml
