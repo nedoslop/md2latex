@@ -78,7 +78,7 @@
   \setlength{\abovedisplayshortskip}{0pt}
   \setlength{\belowdisplayshortskip}{10pt}
 }
-\setlength{\intextsep}{\baselineskip}
+\setlength{\intextsep}{0.7\baselineskip}
 \setlength{\abovecaptionskip}{6pt}
 \setlength{\belowcaptionskip}{0pt}
 
@@ -90,7 +90,8 @@
   position={% if figure_caption_below %}bottom{% else %}top{% endif %},
   singlelinecheck=false,
   font={normalsize},
-  indention=0pt
+  indention=0pt,
+  belowskip=-8pt
 }
 \captionsetup[table]{
   labelsep=stu,
