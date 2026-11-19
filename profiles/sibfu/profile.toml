@@ -89,6 +89,11 @@ main_part_heading       = "ОСНОВНАЯ ЧАСТЬ"
 main_part_silent        = true
 bibliography_heading    = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
 
+structural_heading_case = "upper"      # ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ — caps
+heading_case            = "sentence"   # 1 Основная часть — Sentence
+subsection_case         = "auto_title" # 1.1 Общие сведения
+heading_numbering = "auto"
+
 # ── Localized labels used by the converter ─────────────────────────────
 [labels]
 table_continued   = "Продолжение таблицы"
@@ -98,6 +103,7 @@ table_name        = "Таблица"
 listing_name = "Листинг"
 contents_name     = "СОДЕРЖАНИЕ"
 bibliography_name = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
+equation_ref_parens = true
 
 # ── Lists ──────────────────────────────────────────────────────────────
 [lists]

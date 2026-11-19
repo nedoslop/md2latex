@@ -1,5 +1,15 @@
 //! Inline node rendering: text, code, math, emphasis, links, footnote
 //! references, superscripts, and the `~sub~` / `~~strike~~` extensions.
+//!
+//! ## Автоматические скобки в ссылках на формулы
+//!
+//! При `labels.equation_ref_parens = true` (по умолчанию) конструкции
+//! `\ref{eq:...}` внутри code-span конвертируются в `\eqref{eq:...}`,
+//! чтобы номер формулы печатался в скобках `(1)`. Ссылки на другие
+//! метки (`fig:`, `tbl:`, `lst:`) не трогаются.
+//!
+//! При `equation_ref_parens = false` делается обратное: `\eqref{eq:...}`
+//! конвертируется в `\ref{eq:...}` (без скобок).
 
 use crate::config::Config;
 use crate::log;
@@ -23,7 +33,7 @@ pub(crate) fn render_inline<'a>(
             NodeValue::Text(t) => out.push_str(&render_text_node(&t)),
             NodeValue::Code(c) => {
                 if c.literal.starts_with('\\') {
-                    out.push_str(&c.literal);
+                    out.push_str(&process_raw_latex_refs(&c.literal, cfg));
                 } else {
                     out.push_str(&format!("\\texttt{{{}}}", escape_latex(&c.literal)));
                 }
@@ -95,6 +105,40 @@ pub(crate) fn render_inline<'a>(
     }
     Ok(())
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Equation-reference parentheses
+// ─────────────────────────────────────────────────────────────────────────
+
+/// В `\ref{eq:foo}` / `\eqref{eq:foo}` внутри code-span приводит
+/// команду к виду, заданному `cfg.labels.equation_ref_parens`:
+///
+/// * `true`  → `\eqref{eq:foo}`  (номер в скобках);
+/// * `false` → `\ref{eq:foo}`    (без скобок).
+///
+/// Ссылки на метки `fig:`, `tbl:`, `lst:` и любые другие не изменяются.
+fn process_raw_latex_refs(literal: &str, cfg: &Config) -> String {
+    if cfg.labels.equation_ref_parens {
+        // \ref{eq:x}  ->  \eqref{eq:x}
+        // (уже \eqref не трогаем — регэксп не совпадёт, т.к. префикс \eqref)
+        let re = Regex::new(r"\\ref\{eq:([^}]+)\}").unwrap();
+        re.replace_all(literal, |caps: &regex::Captures| {
+            format!("\\eqref{{eq:{}}}", &caps[1])
+        })
+        .into_owned()
+    } else {
+        // \eqref{eq:x}  ->  \ref{eq:x}
+        let re = Regex::new(r"\\eqref\{eq:([^}]+)\}").unwrap();
+        re.replace_all(literal, |caps: &regex::Captures| {
+            format!("\\ref{{eq:{}}}", &caps[1])
+        })
+        .into_owned()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Plain text helpers (unchanged)
+// ─────────────────────────────────────────────────────────────────────────
 
 fn render_text_node(text: &str) -> String {
     let normalized = normalize_dashes(text);

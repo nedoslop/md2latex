@@ -4,6 +4,60 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+// ── Case-conversion and heading-numbering enums ─────────────────────────
+
+/// Режим приведения регистра для строки (заголовка, подписи и т.п.).
+///
+/// Задаётся в конфиге строкой в `snake_case`:
+/// `preserve`, `upper`, `title`, `sentence`, `auto_title`.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CaseMode {
+    /// Оставить как есть.
+    #[default]
+    Preserve,
+    /// Всё в ВЕРХНИЙ РЕГИСТР.
+    Upper,
+    /// Каждое слово с Заглавной.
+    Title,
+    /// Первая буква заглавная, остальное — как в источнике.
+    Sentence,
+    /// Если строка целиком в верхнем регистре — привести к Title,
+    /// иначе оставить как есть. Историческое поведение.
+    AutoTitle,
+}
+
+impl CaseMode {
+    /// Приводит регистр строки согласно режиму.
+    pub fn apply(self, s: &str) -> String {
+        match self {
+            CaseMode::Preserve => s.to_string(),
+            CaseMode::Upper => s.to_uppercase(),
+            CaseMode::Title => to_title_case(s),
+            CaseMode::Sentence => to_sentence_case(s),
+            CaseMode::AutoTitle => to_title_case_if_upper(s),
+        }
+    }
+}
+
+/// Как обрабатывать номера в заголовках Markdown (`# 1. Введение`).
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HeadingNumbering {
+    /// Снять номер из источника и позволить LaTeX нумеровать (по умолчанию).
+    #[default]
+    Auto,
+    /// Использовать номера из источника, синхронизируя счётчики LaTeX
+    /// через `\setcounter{...}{N-1}`. Полезно, если порядок в Markdown
+    /// не совпадает с порядком LaTeX-секций.
+    Source,
+    /// Снять номера и печатать заголовки без нумерации (`\section*{}` +
+    /// запись в TOC).
+    None,
+}
+
+// ── Config ──────────────────────────────────────────────────────────────
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub project: Project,
@@ -139,6 +193,55 @@ pub struct Style {
     pub language: String,
     #[serde(default = "default_other_language")]
     pub other_language: String,
+
+    // ── Регистр и нумерация заголовков (все поля опциональны) ────────────
+    /// Режим приведения регистра для заголовков уровня `\section`
+    /// (обычные разделы, не структурные).
+    /// Если не задан — используется `section_uppercase` (историческое поле).
+    #[serde(default)]
+    pub heading_case: Option<CaseMode>,
+    /// Режим приведения регистра для структурных заголовков
+    /// (ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ, …).
+    /// Если не задан — используется `structural_heading_uppercase`.
+    #[serde(default)]
+    pub structural_heading_case: Option<CaseMode>,
+    /// Режим приведения регистра для подразделов (`\subsection`,
+    /// `\subsubsection`). Если не задан — `auto_title`
+    /// (историческое поведение).
+    #[serde(default)]
+    pub subsection_case: Option<CaseMode>,
+    /// Как обрабатывать номера в Markdown-заголовках.
+    #[serde(default)]
+    pub heading_numbering: HeadingNumbering,
+}
+
+impl Style {
+    /// Эффективный режим регистра для `\section`-заголовков.
+    pub fn heading_case_mode(&self) -> CaseMode {
+        if let Some(m) = self.heading_case {
+            return m;
+        }
+        if self.section_uppercase {
+            CaseMode::Upper
+        } else {
+            CaseMode::AutoTitle
+        }
+    }
+
+    /// Эффективный режим регистра для структурных заголовков.
+    pub fn structural_heading_case_mode(&self) -> CaseMode {
+        self.structural_heading_case
+            .unwrap_or(if self.structural_heading_uppercase {
+                CaseMode::Upper
+            } else {
+                CaseMode::AutoTitle
+            })
+    }
+
+    /// Эффективный режим регистра для подразделов.
+    pub fn subsection_case_mode(&self) -> CaseMode {
+        self.subsection_case.unwrap_or(CaseMode::AutoTitle)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,6 +319,12 @@ pub struct Labels {
     pub contents_name: String,
     #[serde(default = "default_bibliography_name")]
     pub bibliography_name: String,
+    /// Автоматически добавлять скобки в ссылках на формулы:
+    /// `\ref{eq:foo}` → `\eqref{eq:foo}`. Если `false`, наоборот,
+    /// `\eqref{eq:foo}` → `\ref{eq:foo}`.
+    /// Ссылки на другие метки (`fig:`, `tbl:`, `lst:`) не трогаются.
+    #[serde(default = "default_true")]
+    pub equation_ref_parens: bool,
 }
 
 fn default_table_continued() -> String {
@@ -250,6 +359,7 @@ impl Default for Labels {
             listing_name: default_listing_name(),
             contents_name: default_contents_name(),
             bibliography_name: default_bibliography_name(),
+            equation_ref_parens: true,
         }
     }
 }
@@ -591,5 +701,43 @@ impl Default for LineBreaking {
             tolerance: 9999,
             hbadness: 10000,
         }
+    }
+}
+
+// ── Helpers for case conversion (used by CaseMode::apply) ───────────────
+
+fn to_title_case(s: &str) -> String {
+    s.split_whitespace()
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn to_sentence_case(s: &str) -> String {
+    let lower = s.to_lowercase();
+    let mut result = String::with_capacity(lower.len());
+    let mut first_alpha_done = false;
+    for c in lower.chars() {
+        if !first_alpha_done && c.is_alphabetic() {
+            result.extend(c.to_uppercase());
+            first_alpha_done = true;
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+fn to_title_case_if_upper(s: &str) -> String {
+    if s.chars().all(|c| !c.is_lowercase()) {
+        to_title_case(s)
+    } else {
+        s.to_string()
     }
 }

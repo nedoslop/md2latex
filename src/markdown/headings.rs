@@ -1,6 +1,36 @@
 //! Heading rendering: structural H1s, numbered sections, appendices.
+//!
+//! ## Регистр
+//!
+//! Регистр заголовков управляется тремя конфигами (все — опциональные,
+//! значения по умолчанию сохраняют прежнее поведение):
+//!
+//! * `style.structural_heading_case` — для структурных заголовков
+//!   (ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ, …). Fallback: `structural_heading_uppercase`.
+//! * `style.heading_case` — для `\section`-заголовков.
+//!   Fallback: `section_uppercase`.
+//! * `style.subsection_case` — для подразделов.
+//!   Default: `auto_title`.
+//!
+//! Режимы: `preserve`, `upper`, `title`, `sentence`, `auto_title`.
+//!
+//! ## Нумерация
+//!
+//! `style.heading_numbering`:
+//!
+//! * `auto` (по умолчанию) — номер из Markdown отбрасывается, LaTeX
+//!   нумерует автоматически.
+//! * `source` — номер из Markdown сохраняется; перед `\section`/`\subsection`
+//!   выставляется `\setcounter{...}{N-1}`. Предупреждение, если число
+//!   компонентов не совпадает с глубиной команды.
+//! * `none` — номер отбрасывается, заголовок печатается без нумерации
+//!   (`\section*{}` + `\addcontentsline`).
+//!
+//! Структурные заголовки и заголовки приложений обрабатываются отдельной
+//! ветвью и не подчиняются `heading_numbering` — у них своя схема
+//! (ВВЕДЕНИЕ/ЗАКЛЮЧЕНИЕ без номера; приложения — буквами A, B, …).
 
-use crate::config::Config;
+use crate::config::{CaseMode, Config, HeadingNumbering};
 use crate::log;
 use anyhow::Result;
 use comrak::nodes::AstNode;
@@ -17,9 +47,10 @@ pub(crate) fn render_heading<'a>(
     state: &mut RenderState<'_>,
 ) -> Result<()> {
     let raw_text = extract_text(node);
-    let clean = strip_heading_number(&raw_text)
-        .trim_end_matches('.')
-        .to_string();
+    let (numbers, clean) = split_heading_prefix(&raw_text);
+    let clean = clean.trim_end_matches('.').trim().to_string();
+
+    // ── H1: структурный или обычный раздел ──────────────────────────────
     if level == 1 {
         if is_structural(&clean, cfg) {
             if cfg.style.structural_headings_newpage {
@@ -53,64 +84,79 @@ pub(crate) fn render_heading<'a>(
             } else {
                 out.push_str("\\clearpage\n");
             }
-            out.push_str(&format!(
-                "\\section{{{}}}\n\n",
-                escape_latex(&to_title_case_if_upper(&clean))
-            ));
-        }
-    } else {
-        state.in_bibliography = false;
-        let is_numbered_section = level == 2
-            && raw_text
-                .trim()
-                .chars()
-                .next()
-                .map_or(false, |c| c.is_ascii_digit());
-        if is_numbered_section {
-            state.ctx = Ctx::StructuralNumbered;
-        }
-        if state.ctx == Ctx::StructuralUnnumbered {
-            out.push_str(&format!(
-                "\\textbf{{{}}}\\par\n\n",
-                escape_latex(&to_title_case_if_upper(&clean))
-            ));
-            return Ok(());
-        }
-        let (cmd, numbered) = match (state.ctx, level) {
-            (Ctx::StructuralNumbered, 2) => ("section", true),
-            (Ctx::StructuralNumbered, 3) => ("subsection", true),
-            (Ctx::StructuralNumbered, _) => ("subsubsection", true),
-            (Ctx::Appendix, 2) => ("subsection", true),
-            (Ctx::Appendix, 3) => ("subsubsection", true),
-            (Ctx::Appendix, _) => ("paragraph", true),
-            (Ctx::Ordinary, 2) => ("subsection", true),
-            (Ctx::Ordinary, 3) => ("subsubsection", true),
-            (Ctx::Ordinary, _) => ("paragraph", true),
-            _ => ("section", true),
-        };
-        let display = to_title_case_if_upper(&clean);
-        if cmd == "section" {
-            if state.skip_next_section_pagebreak {
-                state.skip_next_section_pagebreak = false;
-            } else {
-                out.push_str("\\clearpage\n");
+            let display = cfg.style.heading_case_mode().apply(&clean);
+            let numbered = cfg.style.heading_numbering != HeadingNumbering::None;
+            if cfg.style.heading_numbering == HeadingNumbering::Source {
+                sync_counter("section", numbers.as_deref(), out);
             }
+            emit_section_like("section", &display, numbered, out);
         }
-        if !numbered {
-            let toc_cmd = cmd.trim_end_matches('*');
-            out.push_str(&format!(
-                "\\phantomsection\n\\addcontentsline{{toc}}{{{}}}{{{}}}\n\\{}{{{}}}\n\n",
-                toc_cmd,
-                escape_latex(&display),
-                cmd,
-                escape_latex(&display)
-            ));
+        return Ok(());
+    }
+
+    // ── H2+: подразделы ─────────────────────────────────────────────────
+    state.in_bibliography = false;
+    let is_numbered_section = level == 2
+        && raw_text
+            .trim()
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_digit());
+    if is_numbered_section {
+        state.ctx = Ctx::StructuralNumbered;
+    }
+
+    if state.ctx == Ctx::StructuralUnnumbered {
+        // Подраздел внутри структурного заголовка — печатаем жирным
+        // без нумерации.
+        let display = cfg.style.subsection_case_mode().apply(&clean);
+        out.push_str(&format!("\\textbf{{{}}}\\par\n\n", escape_latex(&display)));
+        return Ok(());
+    }
+
+    let (cmd, numbered) = match (state.ctx, level) {
+        (Ctx::StructuralNumbered, 2) => ("section", true),
+        (Ctx::StructuralNumbered, 3) => ("subsection", true),
+        (Ctx::StructuralNumbered, _) => ("subsubsection", true),
+        (Ctx::Appendix, 2) => ("subsection", true),
+        (Ctx::Appendix, 3) => ("subsubsection", true),
+        (Ctx::Appendix, _) => ("paragraph", true),
+        (Ctx::Ordinary, 2) => ("subsection", true),
+        (Ctx::Ordinary, 3) => ("subsubsection", true),
+        (Ctx::Ordinary, _) => ("paragraph", true),
+        _ => ("section", true),
+    };
+
+    // Режим регистра выбираем по типу команды.
+    let case_mode = if cmd == "section" {
+        cfg.style.heading_case_mode()
+    } else {
+        cfg.style.subsection_case_mode()
+    };
+    let display = case_mode.apply(&clean);
+
+    if cmd == "section" {
+        if state.skip_next_section_pagebreak {
+            state.skip_next_section_pagebreak = false;
         } else {
-            out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(&display)));
+            out.push_str("\\clearpage\n");
         }
     }
+
+    // Синхронизация счётчика в режиме `source`.
+    if cfg.style.heading_numbering == HeadingNumbering::Source {
+        sync_counter(cmd, numbers.as_deref(), out);
+    }
+
+    // В режиме `none` печатаем без номера; в остальных — как обычно.
+    let actually_numbered = numbered && cfg.style.heading_numbering != HeadingNumbering::None;
+    emit_section_like(cmd, &display, actually_numbered, out);
     Ok(())
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Structural headings
+// ─────────────────────────────────────────────────────────────────────────
 
 fn is_structural(text: &str, cfg: &Config) -> bool {
     let t = text.trim().to_uppercase();
@@ -128,11 +174,7 @@ fn is_appendix_heading(text: &str, cfg: &Config) -> bool {
 }
 
 fn render_structural_heading(text: &str, out: &mut String, cfg: &Config) -> Result<()> {
-    let display = if cfg.style.structural_heading_uppercase {
-        text.trim().to_uppercase()
-    } else {
-        to_title_case_if_upper(text)
-    };
+    let display = cfg.style.structural_heading_case_mode().apply(text.trim());
     if cfg.style.main_part_silent
         && display.trim().to_uppercase() == cfg.style.main_part_heading.trim().to_uppercase()
     {
@@ -169,7 +211,8 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
     let toc_entry = if title.is_empty() {
         app_label.clone()
     } else {
-        format!("{} {}", app_label, to_title_case_if_upper(title))
+        let t = cfg.style.structural_heading_case_mode().apply(title);
+        format!("{} {}", app_label, t)
     };
     let listing_reset = if cfg.code.enabled && !cfg.code.engine.eq_ignore_ascii_case("minted") {
         format!(
@@ -206,34 +249,89 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
         escape_latex(&app_label)
     ));
     if !title.is_empty() {
+        let t = cfg.style.subsection_case_mode().apply(title);
         out.push_str(&format!(
             "\\vspace{{0.5\\baselineskip}}\n\
              {{\\centering\\setlength{{\\parindent}}{{0pt}}\\textbf{{{}}}\\par}}\n",
-            escape_latex(&to_title_case_if_upper(title))
+            escape_latex(&t)
         ));
     }
     out.push_str("\\vspace{\\baselineskip}\n\n");
     Ok(())
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Numbering helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Отделяет числовой префикс (`1`, `1.2`, `1.2.3`) от текста заголовка.
+///
+/// Возвращает `(числа, текст-без-префикса)`.
+fn split_heading_prefix(text: &str) -> (Option<Vec<u32>>, String) {
+    let re = Regex::new(r"^\s*(\d+(?:\.\d+)*)\.?\s+").unwrap();
+    if let Some(c) = re.captures(text) {
+        let nums: Vec<u32> = c[1].split('.').filter_map(|s| s.parse().ok()).collect();
+        (Some(nums), re.replace(text, "").to_string())
+    } else {
+        (None, text.to_string())
+    }
+}
+
+/// Синхронизирует LaTeX-счётчик перед `\section`/`\subsection`/…
+/// в режиме `HeadingNumbering::Source`.
+fn sync_counter(cmd: &str, numbers: Option<&[u32]>, out: &mut String) {
+    let (counter, expected_len) = match cmd {
+        "section" => ("section", 1usize),
+        "subsection" => ("subsection", 2usize),
+        "subsubsection" => ("subsubsection", 3usize),
+        _ => return,
+    };
+    let Some(nums) = numbers else { return };
+    if nums.len() != expected_len {
+        log::warn(&format!(
+            "heading number {:?} has {} component(s), expected {} for \\{}; counter not synced",
+            nums,
+            nums.len(),
+            expected_len,
+            cmd
+        ));
+        return;
+    }
+    let n = nums[expected_len - 1];
+    if n > 0 {
+        out.push_str(&format!("\\setcounter{{{}}}{{{}}}\n", counter, n - 1));
+    }
+}
+
+/// Печатает `\section{...}` (numbered = true) либо
+/// `\section*{...}` + TOC-entry (numbered = false).
+fn emit_section_like(cmd: &str, display: &str, numbered: bool, out: &mut String) {
+    if numbered {
+        out.push_str(&format!("\\{}{{{}}}\n\n", cmd, escape_latex(display)));
+    } else {
+        out.push_str(&format!(
+            "\\phantomsection\n\
+             \\addcontentsline{{toc}}{{{}}}{{{}}}\n\
+             \\{}*{{{}}}\n\n",
+            cmd,
+            escape_latex(display),
+            cmd,
+            escape_latex(display)
+        ));
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Legacy helpers kept for API compatibility
+// ─────────────────────────────────────────────────────────────────────────
+
+#[allow(dead_code)]
 fn strip_heading_number(s: &str) -> String {
     let re = Regex::new(r"^\s*\d+(\.\d+)*\.?\s*").unwrap();
     re.replace(s, "").to_string()
 }
 
+#[allow(dead_code)]
 fn to_title_case_if_upper(s: &str) -> String {
-    if s.chars().all(|c| !c.is_lowercase()) {
-        s.split_whitespace()
-            .map(|w| {
-                let mut c = w.chars();
-                match c.next() {
-                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                    None => String::new(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
-    } else {
-        s.to_string()
-    }
+    CaseMode::AutoTitle.apply(s)
 }
