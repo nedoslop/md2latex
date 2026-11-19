@@ -29,6 +29,7 @@ comfy-table = "8"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
 serde_json = "1"
 sha2 = "0.11"
+mimalloc = "0.1"
 
 [build-dependencies]
 winresource = "0.1.34"

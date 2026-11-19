@@ -17,9 +17,13 @@ mod template;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use mimalloc::MiMalloc;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[derive(Parser)]
 #[command(name = "md2latex-gost")]
