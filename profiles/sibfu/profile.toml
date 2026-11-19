@@ -105,6 +105,20 @@ contents_name     = "СОДЕРЖАНИЕ"
 bibliography_name = "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"
 equation_ref_parens = true
 
+[references]
+enabled         = true
+syntax          = "both"               # {tbl:r} и @tbl:r
+default_command = "\\ref"
+prefixes        = ["eq", "fig", "tbl", "lst", "sec", "app"]
+
+[references.commands]
+eq  = "\\eqref"
+fig = "\\ref"
+tbl = "\\ref"
+lst = "\\ref"
+sec = "\\ref"
+app = "\\ref"
+
 # ── Lists ──────────────────────────────────────────────────────────────
 [lists]
 itemize_label      = "-"

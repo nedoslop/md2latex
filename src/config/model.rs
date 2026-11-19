@@ -48,8 +48,7 @@ pub enum HeadingNumbering {
     #[default]
     Auto,
     /// Использовать номера из источника, синхронизируя счётчики LaTeX
-    /// через `\setcounter{...}{N-1}`. Полезно, если порядок в Markdown
-    /// не совпадает с порядком LaTeX-секций.
+    /// через `\setcounter{...}{N-1}`.
     Source,
     /// Снять номера и печатать заголовки без нумерации (`\section*{}` +
     /// запись в TOC).
@@ -86,6 +85,9 @@ pub struct Config {
     pub labels: Labels,
     #[serde(default)]
     pub code: Code,
+    /// Упрощённый синтаксис ссылок (`{tbl:x}`, `@fig:y`, `\ref{z}`).
+    #[serde(default)]
+    pub references: References,
     /// PlantUML rendering settings.
     #[serde(default)]
     pub plantuml: PlantUmlConfig,
@@ -195,28 +197,17 @@ pub struct Style {
     pub other_language: String,
 
     // ── Регистр и нумерация заголовков (все поля опциональны) ────────────
-    /// Режим приведения регистра для заголовков уровня `\section`
-    /// (обычные разделы, не структурные).
-    /// Если не задан — используется `section_uppercase` (историческое поле).
     #[serde(default)]
     pub heading_case: Option<CaseMode>,
-    /// Режим приведения регистра для структурных заголовков
-    /// (ВВЕДЕНИЕ, ЗАКЛЮЧЕНИЕ, …).
-    /// Если не задан — используется `structural_heading_uppercase`.
     #[serde(default)]
     pub structural_heading_case: Option<CaseMode>,
-    /// Режим приведения регистра для подразделов (`\subsection`,
-    /// `\subsubsection`). Если не задан — `auto_title`
-    /// (историческое поведение).
     #[serde(default)]
     pub subsection_case: Option<CaseMode>,
-    /// Как обрабатывать номера в Markdown-заголовках.
     #[serde(default)]
     pub heading_numbering: HeadingNumbering,
 }
 
 impl Style {
-    /// Эффективный режим регистра для `\section`-заголовков.
     pub fn heading_case_mode(&self) -> CaseMode {
         if let Some(m) = self.heading_case {
             return m;
@@ -228,7 +219,6 @@ impl Style {
         }
     }
 
-    /// Эффективный режим регистра для структурных заголовков.
     pub fn structural_heading_case_mode(&self) -> CaseMode {
         self.structural_heading_case
             .unwrap_or(if self.structural_heading_uppercase {
@@ -238,7 +228,6 @@ impl Style {
             })
     }
 
-    /// Эффективный режим регистра для подразделов.
     pub fn subsection_case_mode(&self) -> CaseMode {
         self.subsection_case.unwrap_or(CaseMode::AutoTitle)
     }
@@ -277,17 +266,64 @@ impl Default for Code {
     }
 }
 
+// ── References (упрощённый синтаксис ссылок) ────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct References {
+    /// Включить упрощённый синтаксис.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// `braces` — `{tbl:x}`; `at` — `@tbl:x`; `both` — оба.
+    #[serde(default = "default_reference_syntax")]
+    pub syntax: String,
+    /// LaTeX-команда по умолчанию (когда для префикса не задана своя).
+    #[serde(default = "default_reference_command")]
+    pub default_command: String,
+    /// Префиксы, которые распознаются. Всё прочее (например `{myCustom:x}`)
+    /// считается обычным LaTeX и не трогается.
+    #[serde(default = "default_reference_prefixes")]
+    pub prefixes: Vec<String>,
+    /// Переопределение команды для конкретного префикса.
+    #[serde(default)]
+    pub commands: HashMap<String, String>,
+}
+
+fn default_reference_syntax() -> String {
+    "braces".into()
+}
+fn default_reference_command() -> String {
+    "\\ref".into()
+}
+fn default_reference_prefixes() -> Vec<String> {
+    vec![
+        "eq".into(),
+        "fig".into(),
+        "tbl".into(),
+        "lst".into(),
+        "sec".into(),
+        "app".into(),
+    ]
+}
+
+impl Default for References {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            syntax: default_reference_syntax(),
+            default_command: default_reference_command(),
+            prefixes: default_reference_prefixes(),
+            commands: HashMap::new(),
+        }
+    }
+}
+
 // ── PlantUML ────────────────────────────────────────────────────────────
 #[derive(Debug, Deserialize)]
 pub struct PlantUmlConfig {
-    /// Enable/disable PlantUML rendering.
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// Path to an existing `plantuml.jar`. If unset, the JAR will be downloaded
-    /// automatically to `<output_dir>/plantuml/plantuml.jar`.
     #[serde(default)]
     pub jar_path: Option<String>,
-    /// Java command to run (defaults to `java`).
     #[serde(default)]
     pub java_path: Option<String>,
 }
@@ -302,7 +338,7 @@ impl Default for PlantUmlConfig {
     }
 }
 
-// ── Remaining structures unchanged ──────────────────────────────────────
+// ── Remaining structures ────────────────────────────────────────────────
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Labels {
     #[serde(default = "default_table_continued")]
@@ -322,7 +358,6 @@ pub struct Labels {
     /// Автоматически добавлять скобки в ссылках на формулы:
     /// `\ref{eq:foo}` → `\eqref{eq:foo}`. Если `false`, наоборот,
     /// `\eqref{eq:foo}` → `\ref{eq:foo}`.
-    /// Ссылки на другие метки (`fig:`, `tbl:`, `lst:`) не трогаются.
     #[serde(default = "default_true")]
     pub equation_ref_parens: bool,
 }
@@ -704,7 +739,7 @@ impl Default for LineBreaking {
     }
 }
 
-// ── Helpers for case conversion (used by CaseMode::apply) ───────────────
+// ── Helpers for case conversion ─────────────────────────────────────────
 
 fn to_title_case(s: &str) -> String {
     s.split_whitespace()
