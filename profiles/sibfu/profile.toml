@@ -158,6 +158,10 @@ dpi         = 300
 [bibliography]
 use_biblatex = false
 
+[plantuml]
+enabled = true
+dpi = 300
+
 # ── Institution-specific template defaults ─────────────────────────────
 # These are injected into every template as `extra.*`. Title templates
 # use `extra.ministry | default(value="…")` so overrides are optional.

@@ -1,12 +1,12 @@
 //! PlantUML support: JAR downloading, Java check, rendering and caching.
 //!
-//! Code blocks with language `plantuml` are converted to PNG images, 
+//! Code blocks with language `plantuml` are converted to PNG images,
 //! which are then inserted into the document as regular illustrations (`figure`).
 //!
-//! The JAR is automatically downloaded from GitHub (latest stable release) 
+//! The JAR is automatically downloaded from GitHub (latest stable release)
 //! to `<output_dir>/plantuml/plantuml.jar` if it's not already there.
 //!
-//! Cache: `<output_dir>/plantuml_cache/<sha256>.png`. The key is the SHA-256 
+//! Cache: `<output_dir>/plantuml_cache/<sha256>.png`. The key is the SHA-256
 //! of the PlantUML source code. Reusing the same code skips rendering.
 
 use crate::config::Config;
@@ -20,17 +20,24 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// PNG plus the density it was rendered at — the caller needs both.
+pub struct Rendered {
+    pub png_path: PathBuf,
+    pub dpi: u32,
+}
+
 pub struct PlantUml {
     jar_path: PathBuf,
     java_cmd: String,
     cache_dir: PathBuf,
+    default_dpi: u32,
 }
 
 impl PlantUml {
-    /// Prepares PlantUML: checks Java, downloads the JAR if necessary, 
+    /// Prepares PlantUML: checks Java, downloads the JAR if necessary,
     /// creates the cache directory.
     ///
-    /// Returns `None` if PlantUML is unavailable (no Java, failed to download JAR). 
+    /// Returns `None` if PlantUML is unavailable (no Java, failed to download JAR).
     /// In this case, the caller should skip rendering and emit a warning.
     pub fn new(cfg: &Config, out_dir: &Path) -> Result<Option<Self>> {
         if !cfg.plantuml.enabled {
@@ -96,36 +103,36 @@ impl PlantUml {
             jar_path,
             java_cmd,
             cache_dir,
+            default_dpi: cfg.plantuml.dpi.max(1),
         }))
     }
 
     /// Renders PlantUML code to PNG. Returns the path to the cache file.
     ///
     /// If rendering fails, returns `Ok(None)` (warning already emitted).
-    pub fn render(&self, code: &str) -> Result<Option<PathBuf>> {
-        let hash = sha256_hex(code);
+    pub fn render(&self, code: &str) -> Result<Option<Rendered>> {
+        let dpi = effective_dpi(code, self.default_dpi);
+        // DPI is part of the render parameters → part of the cache key.
+        let hash = sha256_hex(&format!("dpi={}\u{0}{}", dpi, code));
         let png_path = self.cache_dir.join(format!("{}.png", hash));
         if png_path.is_file() {
-            return Ok(Some(png_path));
+            return Ok(Some(Rendered { png_path, dpi }));
         }
-
-        // Write .puml directly into cache_dir — then PlantUML will create `<hash>.png` 
-        // next to it, without any `-o` or tempdir (which sometimes fail on Windows for absolute paths).
         let puml_path = self.cache_dir.join(format!("{}.puml", hash));
-        fs::write(&puml_path, code)
-            .with_context(|| format!("failed to write {}", puml_path.display()))?;
+        fs::write(&puml_path, code)?;
 
         let output = Command::new(&self.java_cmd)
+            .arg("-DPLANTUML_LIMIT_SIZE=16384") // JVM arg: MUST precede -jar
             .arg("-jar")
             .arg(&self.jar_path)
+            .arg("-charset")
+            .arg("UTF-8")
             .arg("-tpng")
+            .arg(format!("-Sdpi={}", dpi))
             .arg(&puml_path)
             .output()
             .with_context(|| format!("failed to spawn `{}`", self.java_cmd));
-
-        // .puml is no longer needed in any case.
         let _ = fs::remove_file(&puml_path);
-
         let output = output?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -144,8 +151,48 @@ impl PlantUml {
             ));
             return Ok(None);
         }
-        Ok(Some(png_path))
+        Ok(Some(Rendered { png_path, dpi }))
     }
+}
+
+/// Last `skinparam dpi N` wins (bare or inside a `skinparam [type] { ... }` block).
+fn effective_dpi(code: &str, fallback: u32) -> u32 {
+    let block_comments = regex::Regex::new(r"(?s)/'.*?'/").unwrap();
+    let code = block_comments.replace_all(code, "");
+    let num = |s: &str| {
+        s.split_whitespace()
+            .next()
+            .and_then(|v| v.parse::<u32>().ok())
+    };
+
+    let mut dpi = fallback;
+    let mut in_block = false;
+    for raw in code.lines() {
+        let line = raw.trim();
+        if line.starts_with('\'') {
+            continue;
+        } // full-line comment only
+        let lower = line.to_lowercase();
+        if let Some(rest) = lower.strip_prefix("skinparam") {
+            if let Some(v) = rest.trim().strip_prefix("dpi").and_then(num) {
+                dpi = v;
+            }
+            if lower.contains('{') {
+                in_block = true;
+            }
+            if lower.contains('}') {
+                in_block = false;
+            }
+        } else if in_block {
+            if let Some(v) = lower.strip_prefix("dpi").and_then(num) {
+                dpi = v;
+            }
+            if lower.contains('}') {
+                in_block = false;
+            }
+        }
+    }
+    dpi.max(1)
 }
 
 /// Downloads the latest stable `plantuml.jar` from GitHub to `<out_dir>/plantuml/plantuml.jar`.

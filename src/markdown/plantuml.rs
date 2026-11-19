@@ -13,9 +13,6 @@ use super::images::{normalize_height_value, normalize_width_value, parse_image_t
 use super::state::RenderState;
 use super::util::format_caption;
 
-/// PlantUML's default rendering resolution (`skinparam dpi 96`).
-const PLANTUML_DEFAULT_DPI: f64 = 96.0;
-
 pub(crate) fn parse_plantuml_info(
     info: &str,
     default_width: &str,
@@ -74,10 +71,11 @@ pub(crate) fn render_plantuml_block(
         return;
     };
     match plantuml.render(&code.literal) {
-        Ok(Some(png_path)) => {
+        Ok(Some(rendered)) => {
             emit_plantuml_figure(
                 out,
-                &png_path,
+                &rendered.png_path,
+                rendered.dpi,
                 size,
                 caption.as_deref(),
                 label.as_deref(),
@@ -111,16 +109,19 @@ pub(crate) fn render_plantuml_file(
 ) -> Result<()> {
     let (label, size, title_caption) =
         parse_image_title(title_raw, &cfg.style.default_figure_width);
+
     let final_caption = if !alt_text.is_empty() {
         Some(alt_text.trim_end_matches('.').to_string())
     } else {
         title_caption.map(|c| c.trim_end_matches('.').to_string())
     };
+
     let full_path: PathBuf = if Path::new(url).is_absolute() {
         PathBuf::from(url)
     } else {
         state.md_dir.join(url)
     };
+
     if !full_path.is_file() {
         log::warn(&format!(
             "PlantUML file not found: {} (link was '{}')",
@@ -129,6 +130,7 @@ pub(crate) fn render_plantuml_file(
         ));
         return Ok(());
     }
+
     let code = match fs::read_to_string(&full_path) {
         Ok(c) => c,
         Err(e) => {
@@ -136,15 +138,18 @@ pub(crate) fn render_plantuml_file(
             return Ok(());
         }
     };
+
     let Some(plantuml) = state.plantuml else {
         log::warn("PlantUML is not available; `.puml` reference skipped");
         return Ok(());
     };
+
     match plantuml.render(&code) {
-        Ok(Some(png_path)) => {
+        Ok(Some(rendered)) => {
             emit_plantuml_figure(
                 out,
-                &png_path,
+                &rendered.png_path,
+                rendered.dpi,
                 &size,
                 final_caption.as_deref(),
                 label.as_deref(),
@@ -165,57 +170,20 @@ pub(crate) fn render_plantuml_file(
             ));
         }
     }
+
     Ok(())
 }
 
-/// True physical width of a PlantUML PNG in big points (1bp = 1/72 in).
+/// Emits a rendered diagram as a `figure`.
 ///
-/// Reads the pixel width and the DPI from the `pHYs` chunk; falls back
-/// to PlantUML's default 96 dpi when the chunk is absent. This also
-/// honours a custom `skinparam dpi N` inside the diagram, since
-/// PlantUML writes it into `pHYs`.
-fn natural_width_bp(png_path: &Path) -> Option<f64> {
-    let (w_px, _) = image::image_dimensions(png_path).ok()?;
-    if w_px == 0 {
-        return None;
-    }
-    let dpi = png_dpi(png_path)
-        .filter(|d| *d > 0.0)
-        .unwrap_or(PLANTUML_DEFAULT_DPI);
-    Some(w_px as f64 * 72.0 / dpi)
-}
-
-/// DPI from the PNG `pHYs` chunk (pixels per metre, unit specifier = 1).
-/// Returns `None` if the chunk is missing or unitless.
-fn png_dpi(path: &Path) -> Option<f64> {
-    // FIXME: doesnt work
-    let data = fs::read(path).ok()?;
-    if data.len() < 8 || data[..8] != *b"\x89PNG\r\n\x1a\n" {
-        return None;
-    }
-    let mut pos = 8usize;
-    while pos + 12 <= data.len() {
-        let len = u32::from_be_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
-        let typ = &data[pos + 4..pos + 8];
-        let body = data.get(pos + 8..pos + 8 + len)?;
-        if typ == b"pHYs" {
-            if body.len() == 9 && body[8] == 1 {
-                let ppm_x = u32::from_be_bytes(body[0..4].try_into().ok()?) as f64;
-                return Some(ppm_x * 0.0254);
-            }
-            return None;
-        }
-        if typ == b"IDAT" || typ == b"IEND" {
-            return None; // pHYs must appear before image data
-        }
-        pos += 12 + len;
-    }
-    None
-}
-
+/// `dpi` is the density the PNG was **actually rendered at**: it comes
+/// from `PlantUml::render`, which passes `-Sdpi=N` on the command line
+/// (`plantuml.dpi` from config, overridden by `skinparam dpi` in the
+/// source). Nothing is guessed from PNG metadata.
 fn emit_plantuml_figure(
     out: &mut String,
     png_path: &Path,
+    dpi: u32,
     size: &ImageSize,
     caption: Option<&str>,
     label: Option<&str>,
@@ -224,11 +192,11 @@ fn emit_plantuml_figure(
     let png_rel_path = relative_png_path(png_path, cfg);
 
     // `width=orig` (no width and no height): pin the natural physical
-    // size explicitly. XeTeX assumes 72 dpi for PNGs, which inflates
-    // 96-dpi PlantUML output by 96/72 ≈ 1.33×.
+    // size explicitly. XeTeX assumes 72 dpi for PNGs, which would
+    // inflate the image by dpi/72 — 1.33× at 96 dpi, 4.17× at 300.
     let mut size = size.clone();
     if size.width.is_none() && size.height.is_none() {
-        if let Some(w) = natural_width_bp(png_path) {
+        if let Some(w) = natural_width_bp(png_path, dpi) {
             size.width = Some(format!("{:.2}bp", w));
         } else {
             log::warn(&format!(
@@ -265,6 +233,16 @@ fn emit_plantuml_figure(
         }
     }
     out.push_str("\\end{figure}\n\n");
+}
+
+/// Natural physical width in big points (1bp = 1/72 in), from the pixel
+/// width and the known render density. Exact — no `pHYs` round-trip.
+fn natural_width_bp(png_path: &Path, dpi: u32) -> Option<f64> {
+    let (w_px, _) = image::image_dimensions(png_path).ok()?;
+    if w_px == 0 {
+        return None;
+    }
+    Some(w_px as f64 * 72.0 / dpi.max(1) as f64)
 }
 
 pub(crate) fn is_plantuml_file(url: &str) -> bool {

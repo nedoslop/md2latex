@@ -322,16 +322,25 @@ impl Default for References {
 pub struct PlantUmlConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Render density passed to PlantUML as `-Sdpi=N`.
+    /// Overridden by `skinparam dpi` inside the diagram.
+    #[serde(default = "default_plantuml_dpi")]
+    pub dpi: u32,
     #[serde(default)]
     pub jar_path: Option<String>,
     #[serde(default)]
     pub java_path: Option<String>,
 }
 
+fn default_plantuml_dpi() -> u32 {
+    96
+}
+
 impl Default for PlantUmlConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            dpi: default_plantuml_dpi(),
             jar_path: None,
             java_path: None,
         }
