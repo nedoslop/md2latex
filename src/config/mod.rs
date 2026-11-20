@@ -1,34 +1,37 @@
 //! Configuration loading and data model.
 //!
-//! Configuration is **layered**:
+//! Configuration is **layered** (later layers win):
 //!
-//! 1. Per-document metadata lives in **YAML frontmatter** of the input
-//!    Markdown file (between `---` delimiters at the top). It selects a
-//!    **profile** — a directory containing `profile.toml` plus all LaTeX
-//!    templates for one institution — and supplies title-page fields.
-//! 2. `profile.toml` supplies institution-wide defaults: fonts, page
-//!    geometry, structural headings, localized labels, the university
-//!    name, and a `[doc_types]` map from document-type names to title-page
-//!    template paths.
-//! 3. Any field from the frontmatter is deep-merged on top of the profile
-//!    defaults.
-//!
-//! Three pieces come from the **CLI**, not from config: input path, output
-//! directory, and whether to run `xelatex` afterwards. They are injected
-//! into `[project]` after the merge.
+//! 1. `profile.toml` — institution-wide defaults: fonts, page geometry,
+//!    structural headings, localized labels, the university name, and a
+//!    `[doc_types]` map from document-type names to title-page templates.
+//!    A profile is a directory with `profile.toml` plus all LaTeX templates
+//!    for one institution.
+//! 2. **Shared `.toml` configs** listed under the frontmatter key
+//!    `include:` (a string or a list of paths). They hold everything that
+//!    repeats between documents — institute, department, supervisor,
+//!    student/group, city, year, `project.profile`, `project.doc_type`, …
+//!    so a new practice report only carries its own topic. An included
+//!    file may include further files (`include = [...]`); each file is
+//!    merged once, nested includes before the file itself.
+//! 3. Per-document **YAML frontmatter** of the input Markdown file
+//!    (between `---` delimiters at the top).
+//! 4. The **CLI**: input path, output directory, and whether to run
+//!    `xelatex` afterwards. They are injected into `[project]` last.
 //!
 //! ## Private values
 //!
-//! Any string value in the frontmatter may contain `${VAR}` or
-//! `${VAR:-default}` references. They are resolved from environment
-//! variables (`.env` in the working directory is auto-loaded). Missing
-//! vars without a default abort the build with a clear message — never
-//! print a placeholder where a real name should be.
+//! Any string value in the frontmatter *or in an included `.toml`* may
+//! contain `${VAR}` or `${VAR:-default}` references. They are resolved from
+//! environment variables (`.env` in the working directory is auto-loaded).
+//! Missing vars without a default abort the build with a clear message —
+//! never print a placeholder where a real name should be.
 //!
 //! Template selection is **path-based**, unchanged from before.
 
 mod env;
 mod frontmatter;
+mod include;
 mod merge;
 mod model;
 mod profile;
@@ -51,8 +54,8 @@ pub struct CliOverrides {
 
 impl Config {
     /// Load the config from a Markdown document's YAML frontmatter,
-    /// resolving the referenced profile, deep-merging frontmatter on top
-    /// of the profile, and injecting CLI paths.
+    /// resolving the referenced profile, merging included `.toml` files
+    /// and the frontmatter on top of it, and injecting CLI paths.
     ///
     /// Returns the config plus the Markdown body with the frontmatter
     /// stripped — that body is what downstream modules expect.
@@ -66,7 +69,7 @@ impl Config {
             Some(s) if !s.trim().is_empty() => serde_yaml_ng::from_str(s).with_context(|| {
                 format!(
                     "invalid YAML frontmatter in {} \
-                    (frontmatter must be delimited by `---` lines at the top of the file)",
+                     (frontmatter must be delimited by `---` lines at the top of the file)",
                     md_path.display()
                 )
             })?,
@@ -74,35 +77,67 @@ impl Config {
         };
         let fm_yaml = env::substitute_env_in_yaml(fm_yaml)
             .with_context(|| format!("resolving $VAR references in {}", md_path.display()))?;
-        let fm_toml =
+        let mut fm_toml =
             yaml::yaml_to_toml(fm_yaml).context("converting frontmatter YAML to TOML value")?;
 
-        // ── 1. Locate the profile directory ─────────────────────────────
+        let md_dir = md_path.parent().unwrap_or_else(|| Path::new("."));
+
+        // ── 1. Shared configs pulled in with `include:` ──────────────────
+        let selectors = include::take_includes(&mut fm_toml)
+            .with_context(|| format!("invalid `include` in {}", md_path.display()))?;
+        let mut loader = include::Loader::new(md_dir);
+        let included = loader
+            .load(&selectors, md_dir)
+            .with_context(|| format!("loading included config(s) of {}", md_path.display()))?;
+        if !loader.loaded().is_empty() {
+            let names: Vec<String> = loader
+                .loaded()
+                .iter()
+                .map(|p| p.strip_prefix(md_dir).unwrap_or(p).display().to_string())
+                .collect();
+            crate::log::info(&format!("Included config: {}", names.join(", ")));
+        }
+
+        // ── 2. Locate the profile directory ─────────────────────────────
+        // `project.profile` may come from the frontmatter or from an
+        // included .toml — a shared file usually pins it for all documents.
         let selector = fm_toml
             .get("project")
             .and_then(|p| p.get("profile"))
             .and_then(|v| v.as_str())
+            .or_else(|| {
+                included
+                    .get("project")
+                    .and_then(|p| p.get("profile"))
+                    .and_then(|v| v.as_str())
+            })
             .context(
-                "missing `project.profile` in the Markdown frontmatter \
-                (e.g. `project: { profile: sibfu }`)",
+                "missing `project.profile` in the Markdown frontmatter or in an \
+                 included .toml (e.g. `project: { profile: sibfu }`)",
             )?;
         let selector = selector.to_string();
-        let md_dir = md_path.parent().unwrap_or_else(|| Path::new("."));
         let profile_dir =
             profile::resolve_profile_dir(&selector, md_dir, cli.profiles_dir.as_deref())
                 .with_context(|| format!("could not resolve profile '{}'", selector))?;
 
-        // ── 2. Load profile.toml ────────────────────────────────────────
+        // ── 3. Load profile.toml ────────────────────────────────────────
         let profile_path = profile_dir.join("profile.toml");
         let profile_raw = fs::read_to_string(&profile_path)
             .with_context(|| format!("failed to read profile: {}", profile_path.display()))?;
         let mut merged: toml::Value = toml::from_str(&profile_raw)
             .with_context(|| format!("invalid TOML in {}", profile_path.display()))?;
+        if merged.get("include").is_some() {
+            crate::log::warn(&format!(
+                "`include` in {} is ignored — list shared configs in the Markdown frontmatter",
+                profile_path.display()
+            ));
+        }
 
-        // ── 3. Deep-merge frontmatter over profile ──────────────────────
+        // ── 4. Deep-merge: included configs, then frontmatter ───────────
+        merge::merge_toml(&mut merged, included);
         merge::merge_toml(&mut merged, fm_toml);
 
-        // ── 4. Inject CLI values into [project] ─────────────────────────
+        // ── 5. Inject CLI values into [project] ─────────────────────────
         let md_path_str = md_path.to_string_lossy().into_owned();
         let out_str = cli.output_dir.to_string_lossy().into_owned();
         let project = merged
@@ -119,14 +154,14 @@ impl Config {
 
         let mut cfg: Config = merged
             .try_into()
-            .context("invalid merged configuration (profile + frontmatter)")?;
+            .context("invalid merged configuration (profile + includes + frontmatter)")?;
 
-        // ── 5. Fill the university from the profile if the user didn't ──
+        // ── 6. Fill the university from the profile if the user didn't ──
         if cfg.title.university.trim().is_empty() {
             cfg.title.university = cfg.profile.university.clone();
         }
 
-        // ── 6. Resolve `templates.dir` against the profile directory ────
+        // ── 7. Resolve `templates.dir` against the profile directory ────
         if cfg.templates.dir.is_empty() || cfg.templates.dir == "." {
             cfg.templates.dir = profile_dir.to_string_lossy().into_owned();
         } else if !Path::new(&cfg.templates.dir).is_absolute() {
@@ -136,7 +171,7 @@ impl Config {
                 .into_owned();
         }
 
-        // ── 7. Resolve title template from [doc_types] ──────────────────
+        // ── 8. Resolve title template from [doc_types] ──────────────────
         if let Some(rel) = cfg.doc_types.get(&cfg.project.doc_type).cloned() {
             cfg.templates.title = rel;
         }

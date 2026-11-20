@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Shared configuration for ALL practice works of one student / group.
+# Referenced from Markdown frontmatter:   include: practice_common.toml
+#
+# May itself include other files, e.g.:
+#   include = ["student.toml", "practice_defaults.toml"]
+# ─────────────────────────────────────────────────────────────────────────
+
+[project]
+profile  = "sibfu"
+doc_type = "practice_work"
+
+[title]
+institute  = "Институт космических и информационных технологий"
+department = "Кафедра систем искусственного интеллекта"
+supervisor = "${SUPERVISOR_NAME:-П. П. Петров}"
+city       = "Красноярск"
+year       = "2026"
+
+[[title.students]]
+name       = "${STUDENT_NAME:-И. И. Ветров}"
+group      = "ПИ21-01Б"
+student_id = "987654321"
+
+[extra]
+discipline = "Алгоритмы и структуры данных"

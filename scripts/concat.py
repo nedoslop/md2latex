@@ -6,6 +6,7 @@ files = [
     'Cargo.toml',
     'src/config/env.rs',
     'src/config/frontmatter.rs',
+    'src/config/include.rs',
     'src/config/merge.rs',
     'src/config/mod.rs',
     'src/config/model.rs',
@@ -37,6 +38,7 @@ files = [
     'profiles/sibfu/practice_work.tex.tera',
     'profiles/sibfu/profile.toml',
     'examples/input.md',
+    'examples/practice_common.toml',
     'examples/practice.md',
 ]
 

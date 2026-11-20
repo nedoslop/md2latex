@@ -27,6 +27,8 @@ image = { version = "0.25", default-features = false, features = [
     "gif",
     "tiff",
     "webp",
+    "ico",
+    "tga"
 ] }
 printpdf = { version = "0.12", features = ["png", "jpeg"] }
 serde_yaml_ng = "0.10"

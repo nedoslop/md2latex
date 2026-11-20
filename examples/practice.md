@@ -1,23 +1,14 @@
 ---
-project:
-  profile: sibfu
-  doc_type: practice_work
+# Everything shared lives in practice_common.toml (profile, doc_type,
+# institute, department, supervisor, student, city, year, discipline).
+# Only what is specific to THIS work is written here.
+include: practice_common.toml
 
 title:
-  institute: "Институт космических и информационных технологий"
-  department: "Кафедра систем искусственного интеллекта"
   topic: "Исследование сложности алгоритмов сортировки"
-  supervisor: "П. П. Петров"
-  year: "2026"
-  city: "Красноярск"
-  students:
-    - name: "И. И. Ветров"
-      group: "ПИ21-01Б"
-      student_id: "987654321"
 
 extra:
   work_number: "1"
-  discipline: "Алгоритмы и структуры данных"
 ---
 
 # ВВЕДЕНИЕ
