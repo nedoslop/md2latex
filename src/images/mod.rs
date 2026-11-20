@@ -159,8 +159,11 @@ pub fn prepare_images(
         };
         let cache_key = format!("{}:{}", src_fp, settings);
         let dest = images_out.join(&final_name);
-        let up_to_date =
-            dest.exists() && cache.get(&final_name).map(|s| s == cache_key).unwrap_or(false);
+        let up_to_date = dest.exists()
+            && cache
+                .get(&final_name)
+                .map(|s| s == cache_key)
+                .unwrap_or(false);
 
         used_names.insert(final_name.clone());
         if up_to_date {
