@@ -35,9 +35,13 @@ use crate::log;
 use anyhow::Result;
 use comrak::nodes::AstNode;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use super::state::{Ctx, RenderState};
 use super::util::{escape_latex, extract_text};
+
+static HEADING_PREFIX_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(\d+(?:\.\d+)*)\.?\s+").unwrap());
 
 pub(crate) fn render_heading<'a>(
     node: &'a AstNode<'a>,
@@ -268,10 +272,9 @@ fn render_appendix_heading(text: &str, out: &mut String, cfg: &Config) -> Result
 ///
 /// Возвращает `(числа, текст-без-префикса)`.
 fn split_heading_prefix(text: &str) -> (Option<Vec<u32>>, String) {
-    let re = Regex::new(r"^\s*(\d+(?:\.\d+)*)\.?\s+").unwrap();
-    if let Some(c) = re.captures(text) {
+    if let Some(c) = HEADING_PREFIX_RE.captures(text) {
         let nums: Vec<u32> = c[1].split('.').filter_map(|s| s.parse().ok()).collect();
-        (Some(nums), re.replace(text, "").to_string())
+        (Some(nums), HEADING_PREFIX_RE.replace(text, "").to_string())
     } else {
         (None, text.to_string())
     }

@@ -50,6 +50,21 @@ use super::images::render_image_inline;
 use super::state::RenderState;
 use super::util::escape_latex;
 
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
+static LATEX_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\\(eqref|ref|autoref|cref|pageref)\{([a-zA-Z0-9_\-:]+)\}").unwrap()
+});
+static BRACE_REF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{([a-zA-Z][a-zA-Z0-9_\-]*:[a-zA-Z0-9_\-:]+)\}").unwrap());
+static AT_REF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"@([a-zA-Z][a-zA-Z0-9_\-]*:[a-zA-Z0-9_\-:]+)").unwrap());
+static URL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://[^\s\)\]\}]+").unwrap());
+static REF_EQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\\ref\{eq:([^}]+)\}").unwrap());
+static EQREF_EQ_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\\eqref\{eq:([^}]+)\}").unwrap());
+
 pub(crate) fn render_inline<'a>(
     node: &'a AstNode<'a>,
     out: &mut String,
@@ -57,9 +72,9 @@ pub(crate) fn render_inline<'a>(
     state: &mut RenderState<'_>,
 ) -> Result<()> {
     for child in node.children() {
-        let v = child.data.borrow().value.clone();
-        match v {
-            NodeValue::Text(t) => out.push_str(&render_text_node(&t, cfg)),
+        let data = child.data.borrow();
+        match &data.value {
+            NodeValue::Text(t) => out.push_str(&render_text_node(t, cfg)),
             NodeValue::Code(c) => {
                 if c.literal.starts_with('\\') {
                     out.push_str(&process_raw_latex_refs(&c.literal, cfg));
@@ -111,22 +126,18 @@ pub(crate) fn render_inline<'a>(
                 out.push('}');
             }
             NodeValue::FootnoteReference(r) => {
-                let name = r.name.clone();
-                let num = state.footnote_numbers.get(&name).copied();
-                let content = state.footnotes.get(&name).cloned();
+                let name = &r.name;
+                let num = state.footnote_numbers.get(name).copied();
+                let content = state.footnotes.get(name).cloned();
                 match (num, content) {
-                    (Some(n), _) => {
-                        out.push_str(&format!("\\footnotemark[{}]", n));
-                    }
+                    (Some(n), _) => out.push_str(&format!("\\footnotemark[{}]", n)),
                     (None, Some(c)) => {
                         state.footnote_counter += 1;
                         let n = state.footnote_counter;
-                        state.footnote_numbers.insert(name, n);
+                        state.footnote_numbers.insert(name.clone(), n);
                         out.push_str(&format!("\\footnote{{{}}}", c));
                     }
-                    (None, None) => {
-                        log::warn(&format!("undefined footnote reference: '{}'", name));
-                    }
+                    (None, None) => log::warn(&format!("undefined footnote reference: '{}'", name)),
                 }
             }
             _ => render_inline(child, out, cfg, state)?,
@@ -146,15 +157,36 @@ enum Piece {
 
 fn render_text_node(text: &str, cfg: &Config) -> String {
     let normalized = normalize_dashes(text);
-    let pieces = split_references(&normalized, cfg);
+    let text = normalized.as_ref();
+
+    // Plain prose: no reference syntax possible → skip all regex work.
+    if !may_contain_reference(text, cfg) {
+        return render_plain_text(text);
+    }
+
     let mut out = String::new();
-    for piece in pieces {
+    for piece in split_references(text, cfg) {
         match piece {
             Piece::Text(s) => out.push_str(&render_plain_text(&s)),
             Piece::Latex(s) => out.push_str(&s),
         }
     }
     out
+}
+
+fn may_contain_reference(text: &str, cfg: &Config) -> bool {
+    if text.contains('\\') {
+        return true;
+    }
+    if !cfg.references.enabled {
+        return false;
+    }
+    match cfg.references.syntax.as_str() {
+        "braces" => text.contains('{'),
+        "at" => text.contains('@'),
+        "both" => text.contains('{') || text.contains('@'),
+        _ => false,
+    }
 }
 
 fn split_references(text: &str, cfg: &Config) -> Vec<Piece> {
@@ -164,9 +196,7 @@ fn split_references(text: &str, cfg: &Config) -> Vec<Piece> {
     // 1. Полные LaTeX-ссылки: \ref{...}, \eqref{...}, \autoref{...},
     //    \cref{...}, \pageref{...}. Их нельзя escape-ить — иначе вывод
     //    превратится в \textbackslash{}ref\{...\}.
-    let latex_ref_re = Regex::new(r"\\(eqref|ref|autoref|cref|pageref)\{([a-zA-Z0-9_\-:]+)\}")
-        .expect("latex-reference regex is valid");
-    for caps in latex_ref_re.captures_iter(text) {
+    for caps in LATEX_REF_RE.captures_iter(text) {
         let full = caps.get(0).unwrap();
         let cmd = &caps[1];
         let label = &caps[2];
@@ -190,9 +220,7 @@ fn split_references(text: &str, cfg: &Config) -> Vec<Piece> {
         // 2. {label}
         let use_braces = matches!(cfg.references.syntax.as_str(), "braces" | "both");
         if use_braces {
-            let re = Regex::new(r"\{([a-zA-Z][a-zA-Z0-9_\-]*:[a-zA-Z0-9_\-:]+)\}")
-                .expect("brace-reference regex is valid");
-            for caps in re.captures_iter(text) {
+            for caps in BRACE_REF_RE.captures_iter(text) {
                 let full = caps.get(0).unwrap();
                 if overlaps(&matches, full.start(), full.end()) {
                     continue;
@@ -205,9 +233,7 @@ fn split_references(text: &str, cfg: &Config) -> Vec<Piece> {
         // 3. @label
         let use_at = matches!(cfg.references.syntax.as_str(), "at" | "both");
         if use_at {
-            let re = Regex::new(r"@([a-zA-Z][a-zA-Z0-9_\-]*:[a-zA-Z0-9_\-:]+)")
-                .expect("at-reference regex is valid");
-            for caps in re.captures_iter(text) {
+            for caps in AT_REF_RE.captures_iter(text) {
                 let full = caps.get(0).unwrap();
                 if overlaps(&matches, full.start(), full.end()) {
                     continue;
@@ -274,17 +300,17 @@ fn label_to_latex(label: &str, cfg: &Config) -> Option<String> {
 
 fn process_raw_latex_refs(literal: &str, cfg: &Config) -> String {
     if cfg.labels.equation_ref_parens {
-        let re = Regex::new(r"\\ref\{eq:([^}]+)\}").unwrap();
-        re.replace_all(literal, |caps: &regex::Captures| {
-            format!("\\eqref{{eq:{}}}", &caps[1])
-        })
-        .into_owned()
+        REF_EQ_RE
+            .replace_all(literal, |c: &regex::Captures| {
+                format!("\\eqref{{eq:{}}}", &c[1])
+            })
+            .into_owned()
     } else {
-        let re = Regex::new(r"\\eqref\{eq:([^}]+)\}").unwrap();
-        re.replace_all(literal, |caps: &regex::Captures| {
-            format!("\\ref{{eq:{}}}", &caps[1])
-        })
-        .into_owned()
+        EQREF_EQ_RE
+            .replace_all(literal, |c: &regex::Captures| {
+                format!("\\ref{{eq:{}}}", &c[1])
+            })
+            .into_owned()
     }
 }
 
@@ -293,10 +319,12 @@ fn process_raw_latex_refs(literal: &str, cfg: &Config) -> String {
 // ─────────────────────────────────────────────────────────────────────────
 
 fn render_plain_text(text: &str) -> String {
-    let re = Regex::new(r"https?://[^\s\)\]\}]+").unwrap();
+    if !text.contains("http") {
+        return parse_tildes(text);
+    }
     let mut out = String::new();
     let mut last = 0;
-    for m in re.find_iter(text) {
+    for m in URL_RE.find_iter(text) {
         out.push_str(&parse_tildes(&text[last..m.start()]));
         out.push_str(&format!("\\url{{{}}}", m.as_str()));
         last = m.end();
@@ -306,6 +334,9 @@ fn render_plain_text(text: &str) -> String {
 }
 
 fn parse_tildes(text: &str) -> String {
+    if !text.contains('~') {
+        return escape_latex(text);
+    }
     let mut result = String::new();
     let mut remaining = text;
     while let Some(start) = remaining.find('~') {
@@ -347,8 +378,12 @@ fn parse_tildes(text: &str) -> String {
     result
 }
 
-fn normalize_dashes(text: &str) -> String {
-    text.replace(" --- ", " — ").replace(" -- ", " — ")
+fn normalize_dashes(text: &str) -> Cow<'_, str> {
+    if text.contains(" -- ") || text.contains(" --- ") {
+        Cow::Owned(text.replace(" --- ", " — ").replace(" -- ", " — "))
+    } else {
+        Cow::Borrowed(text)
+    }
 }
 
 fn escape_url(url: &str) -> String {

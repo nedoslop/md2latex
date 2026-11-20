@@ -37,6 +37,20 @@ pub(crate) fn src_fingerprint(path: &Path) -> std::io::Result<String> {
 }
 
 pub(crate) fn convert_image(src: &Path, dst: &Path, ext: &str, dpi: u32) -> Result<()> {
+    // "Converting" PNG→PNG / JPEG→JPEG is a no-op: copy instead of
+    // decode+re-encode (faster and lossless). PDF still needs rasterising.
+    if ext != "pdf" {
+        if let Some(src_ext) = src.extension().map(|e| e.to_string_lossy().to_lowercase()) {
+            let same = src_ext == ext
+                || (matches!(src_ext.as_str(), "jpg" | "jpeg") && matches!(ext, "jpg" | "jpeg"));
+            if same {
+                fs::copy(src, dst).with_context(|| {
+                    format!("failed to copy {} -> {}", src.display(), dst.display())
+                })?;
+                return Ok(());
+            }
+        }
+    }
     match ext {
         "pdf" => raster_to_pdf(src, dst, dpi),
         "png" | "jpg" | "jpeg" | "bmp" | "gif" | "tiff" | "webp" => {

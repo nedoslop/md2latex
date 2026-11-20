@@ -2,9 +2,20 @@
 
 use crate::log;
 use anyhow::{Context, Result};
+use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
+
+const XELATEX_HINT: &str = "xelatex not found. Please install TeX Live / MiKTeX.";
+const AUX_EXTS: &[&str] = &["aux", "toc", "lof", "lot", "out", "bbl", "bcf"];
+
+fn aux_snapshot(dir: &Path) -> Vec<Option<Vec<u8>>> {
+    AUX_EXTS
+        .iter()
+        .map(|e| fs::read(dir.join("main").with_extension(e)).ok())
+        .collect()
+}
 
 pub(crate) fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) -> Result<()> {
     let dir = tex_path.parent().unwrap();
@@ -15,21 +26,24 @@ pub(crate) fn compile_pdf(tex_path: &Path, shell_escape: bool, verbose: bool) ->
     args.push("main.tex");
 
     log::info("xelatex [1/3]...");
-    run_tool("xelatex", &args, dir, verbose)
-        .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
+    run_tool("xelatex", &args, dir, verbose).context(XELATEX_HINT)?;
 
     if tex_path.with_extension("bcf").exists() {
         log::info("biber...");
         run_tool("biber", &["main"], dir, verbose).context("biber not found or failed")?;
     }
 
+    // Snapshot *after* biber: the .bbl is an input of the next pass.
+    let before = aux_snapshot(dir);
     log::info("xelatex [2/3]...");
-    run_tool("xelatex", &args, dir, verbose)
-        .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
+    run_tool("xelatex", &args, dir, verbose).context(XELATEX_HINT)?;
 
-    log::info("xelatex [3/3]...");
-    run_tool("xelatex", &args, dir, verbose)
-        .context("xelatex not found. Please install TeX Live / MiKTeX.")?;
+    if aux_snapshot(dir) == before {
+        log::info("xelatex [3/3] skipped — cross-references already converged");
+    } else {
+        log::info("xelatex [3/3]...");
+        run_tool("xelatex", &args, dir, verbose).context(XELATEX_HINT)?;
+    }
 
     log::success(&format!(
         "PDF ready:     {}",

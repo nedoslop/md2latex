@@ -33,8 +33,8 @@ pub(crate) fn render_list<'a>(
         out.push_str("  \\item ");
         let mut first_block = true;
         for block in item_node.children() {
-            let bv = block.data.borrow().value.clone();
-            match &bv {
+            let bd = block.data.borrow();
+            match &bd.value {
                 NodeValue::Paragraph => {
                     if !first_block {
                         out.push('\n');

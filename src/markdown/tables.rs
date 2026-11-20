@@ -5,11 +5,59 @@ use crate::config::Config;
 use crate::log;
 use anyhow::Result;
 use comrak::nodes::{AstNode, NodeValue, TableAlignment};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::inline::render_inline;
 use super::state::{PendingTableCaption, RenderState};
 use super::util::{compute_baseline, escape_latex, extract_text, format_caption};
+
+/// Incremental replacement for the old O(rows²) `active_columns_at_hline`.
+/// `until[c]` = last row index covered by a multirow started at or before
+/// the current row — identical semantics, computed in one forward sweep.
+struct HlineTracker {
+    until: Vec<usize>,
+}
+
+impl HlineTracker {
+    fn new(ncols: usize) -> Self {
+        Self {
+            until: vec![0; ncols],
+        }
+    }
+
+    fn add_row(&mut self, row_idx: usize, row: &[Cell]) {
+        let mut c = 0usize;
+        for cell in row {
+            if !cell.phantom && cell.rowspan >= 2 {
+                let end = row_idx + cell.rowspan - 1;
+                for k in c..(c + cell.colspan).min(self.until.len()) {
+                    if end > self.until[k] {
+                        self.until[k] = end;
+                    }
+                }
+            }
+            c += cell.colspan;
+        }
+    }
+
+    /// Column ranges *not* covered by an active multirow (1-based on output).
+    fn free_ranges(&self, row_idx: usize) -> Vec<(usize, usize)> {
+        let mut v = Vec::new();
+        let mut k = 0usize;
+        while k < self.until.len() {
+            if self.until[k] > row_idx {
+                k += 1;
+                continue;
+            }
+            let s = k;
+            while k < self.until.len() && self.until[k] <= row_idx {
+                k += 1;
+            }
+            v.push((s, k - 1));
+        }
+        v
+    }
+}
 
 #[derive(Clone)]
 struct Cell {
@@ -166,30 +214,6 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
     }
 }
 
-fn active_columns_at_hline(rows: &[Row], i: usize, ncols: usize) -> Vec<usize> {
-    let mut active = vec![false; ncols];
-    for (s, row) in rows.iter().enumerate() {
-        if s > i {
-            break;
-        }
-        let mut c = 0usize;
-        for cell in row {
-            if !cell.phantom && cell.rowspan >= 2 && s + cell.rowspan - 1 > i {
-                for k in c..(c + cell.colspan).min(ncols) {
-                    active[k] = true;
-                }
-            }
-            c += cell.colspan;
-        }
-    }
-    active
-        .iter()
-        .enumerate()
-        .filter(|(_, a)| **a)
-        .map(|(k, _)| k)
-        .collect()
-}
-
 fn multicolumn_spec(n: usize, align_cmd: &str) -> String {
     let ts = (n - 1) * 2;
     let rw = n - 1;
@@ -253,25 +277,10 @@ fn emit_header_row(row: &Row) -> String {
     emit_row(&bold)
 }
 
-fn emit_trailing_rule(out: &mut String, processed: &[Row], row_idx: usize, ncols: usize) {
-    let skip = active_columns_at_hline(processed, row_idx, ncols);
-    if skip.is_empty() {
+fn emit_trailing_rule(out: &mut String, ranges: &[(usize, usize)], ncols: usize) {
+    if ranges.len() == 1 && ranges[0].0 == 0 && ranges[0].1 + 1 == ncols {
         out.push_str(" \\\\\n\\hline\n");
         return;
-    }
-    let skip_set: HashSet<usize> = skip.iter().copied().collect();
-    let mut ranges: Vec<(usize, usize)> = Vec::new();
-    let mut k = 0usize;
-    while k < ncols {
-        if skip_set.contains(&k) {
-            k += 1;
-        } else {
-            let start = k;
-            while k < ncols && !skip_set.contains(&k) {
-                k += 1;
-            }
-            ranges.push((start, k - 1));
-        }
     }
     out.push_str(" \\\\\n");
     for (s, e) in ranges {
@@ -388,9 +397,14 @@ pub(crate) fn render_table<'a>(
         out.push_str(&format!(" \\\\\n{}\n\\endhead\n", double_rule));
         out.push_str("  \\endfoot\n");
         out.push_str("  \\endlastfoot\n");
+        let mut tracker = HlineTracker::new(ncols);
+        tracker.add_row(0, &processed[0]);
+
         let total_data = processed.len().saturating_sub(1);
         for (data_idx, row) in processed.iter().skip(1).enumerate() {
             let source_row = data_idx + 1;
+            tracker.add_row(source_row, row);
+
             let mut row_data = row.clone();
             if data_idx + 1 == total_data {
                 if let Some(last_cell) = row_data.last_mut() {
@@ -401,7 +415,7 @@ pub(crate) fn render_table<'a>(
             }
             out.push_str("  ");
             out.push_str(&emit_row(&row_data));
-            emit_trailing_rule(out, &processed, source_row, ncols);
+            emit_trailing_rule(out, &tracker.free_ranges(source_row), ncols);
         }
         out.push_str("  \\end{xltabular}\n  }\n\n");
     } else {

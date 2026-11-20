@@ -113,7 +113,8 @@ use anyhow::Result;
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::options::Options;
 use comrak::{parse_document, Arena};
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use code::render_code_block;
 use footnotes::collect_footnotes;
@@ -126,13 +127,9 @@ use state::{PendingTableCaption, RenderState};
 use tables::{parse_table_meta, render_table};
 use util::extract_text;
 
-pub fn markdown_to_latex(
-    md: &str,
-    cfg: &Config,
-    md_dir: &Path,
-    plantuml: Option<&PlantUml>,
-) -> Result<String> {
-    let arena = Arena::new();
+/// Parses the document once; the same AST is used for the PlantUML
+/// pre-pass and for rendering.
+pub fn parse<'a>(arena: &'a Arena<'a>, md: &str) -> &'a AstNode<'a> {
     let mut options = Options::default();
     options.extension.table = true;
     options.extension.footnotes = true;
@@ -140,7 +137,60 @@ pub fn markdown_to_latex(
     options.extension.tasklist = true;
     options.extension.math_dollars = true;
     options.extension.superscript = true;
-    let root = parse_document(&arena, md, &options);
+    parse_document(arena, md, &options)
+}
+
+/// Every PlantUML source the renderer *may* ask for. Over-collecting is
+/// harmless (an unused PNG in the cache); under-collecting only costs a
+/// lazy render, never correctness.
+pub fn collect_plantuml_sources<'a>(
+    root: &'a AstNode<'a>,
+    cfg: &Config,
+    md_dir: &Path,
+) -> Vec<String> {
+    if !cfg.plantuml.enabled {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for node in root.descendants() {
+        match &node.data.borrow().value {
+            NodeValue::CodeBlock(cb) => {
+                let first = cb.info.split_whitespace().next().unwrap_or("");
+                if first.eq_ignore_ascii_case("plantuml") {
+                    let rest = cb
+                        .info
+                        .split_once(char::is_whitespace)
+                        .map(|(_, r)| r.trim())
+                        .unwrap_or("");
+                    if plantuml::info_requests_render(rest) {
+                        out.push(cb.literal.clone());
+                    }
+                }
+            }
+            NodeValue::Image(link) => {
+                if is_plantuml_file(&link.url) {
+                    let p: PathBuf = if Path::new(&link.url).is_absolute() {
+                        PathBuf::from(&link.url)
+                    } else {
+                        md_dir.join(&link.url)
+                    };
+                    if let Ok(code) = fs::read_to_string(&p) {
+                        out.push(code);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+pub fn render<'a>(
+    root: &'a AstNode<'a>,
+    cfg: &Config,
+    md_dir: &Path,
+    plantuml: Option<&PlantUml>,
+) -> Result<String> {
     let footnotes = collect_footnotes(root, cfg)?;
     let mut state = RenderState::new(footnotes, md_dir.to_path_buf(), plantuml);
     let mut out = String::new();
@@ -164,7 +214,9 @@ fn render_node<'a>(
     cfg: &Config,
     state: &mut RenderState<'_>,
 ) -> Result<()> {
-    let value = node.data.borrow().value.clone();
+    let data = node.data.borrow();
+    let value = &data.value;
+
     if !matches!(
         value,
         NodeValue::Table(_) | NodeValue::FootnoteDefinition(_)
@@ -174,24 +226,17 @@ fn render_node<'a>(
             out.push_str("\n\n");
         }
     }
+
     match value {
-        NodeValue::Heading(h) => {
-            render_heading(node, h.level, out, cfg, state)?;
-        }
-        NodeValue::Paragraph => {
-            render_paragraph(node, out, cfg, state)?;
-        }
-        NodeValue::CodeBlock(code) => {
-            render_code_block(&code, out, cfg, state);
-        }
-        NodeValue::List(_) => {
-            render_list(node, out, cfg, state)?;
-        }
+        NodeValue::Heading(h) => render_heading(node, h.level, out, cfg, state)?,
+        NodeValue::Paragraph => render_paragraph(node, out, cfg, state)?,
+        NodeValue::CodeBlock(code) => render_code_block(code, out, cfg, state),
+        NodeValue::List(_) => render_list(node, out, cfg, state)?,
         NodeValue::Table(_) => {
             let meta = state.pending_table.take();
             render_table(node, out, meta, cfg, state)?;
         }
-        NodeValue::Image(link) => render_image_block(node, &link, out, cfg, state)?,
+        NodeValue::Image(link) => render_image_block(node, link, out, cfg, state)?,
         NodeValue::BlockQuote => {
             out.push_str("\\begin{quote}\n");
             for child in node.children() {

@@ -13,6 +13,25 @@ use super::images::{normalize_height_value, normalize_width_value, parse_image_t
 use super::state::RenderState;
 use super::util::format_caption;
 
+fn render_flag(tok: &str) -> Option<bool> {
+    if tok == "render" {
+        return Some(true);
+    }
+    tok.strip_prefix("render=")
+        .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes" | "on"))
+}
+
+/// Cheap, warning-free probe used by the collection pre-pass.
+pub(crate) fn info_requests_render(info: &str) -> bool {
+    let mut render = false;
+    for tok in info.split_whitespace() {
+        if let Some(v) = render_flag(tok) {
+            render = v;
+        }
+    }
+    render
+}
+
 pub(crate) fn parse_plantuml_info(
     info: &str,
     default_width: &str,
@@ -22,10 +41,8 @@ pub(crate) fn parse_plantuml_info(
     let mut size = ImageSize::from_defaults(default_width);
     let mut caption_tokens = Vec::new();
     for tok in info.split_whitespace() {
-        if let Some(v) = tok.strip_prefix("render=") {
-            render = matches!(v.to_lowercase().as_str(), "true" | "1" | "yes" | "on");
-        } else if tok == "render" {
-            render = true;
+        if let Some(v) = render_flag(tok) {
+            render = v;
         } else if let Some(w) = tok.strip_prefix("width=") {
             size.width = normalize_width_value(w);
         } else if let Some(h) = tok.strip_prefix("height=") {

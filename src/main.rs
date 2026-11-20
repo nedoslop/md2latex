@@ -29,31 +29,42 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[command(name = "md2latex-gost")]
 #[command(about = "Markdown -> LaTeX converter with GOST / STU formatting")]
 struct Cli {
-    /// Input Markdown file (its YAML frontmatter selects the profile,
-    /// document type, title-page fields, etc.)
     input: PathBuf,
-    /// Output directory for `main.tex` (and `main.pdf` when `--compile` is set).
     #[arg(short, long, default_value = "out")]
     output_dir: PathBuf,
-    /// Directory that contains institution profiles. Overrides
-    /// `$MD2LATEX_PROFILES_DIR`. When omitted, the lookup tries
-    /// `$MD2LATEX_PROFILES_DIR`, `<md_dir>/profiles`, `<cwd>/profiles`.
     #[arg(long)]
     profiles_dir: Option<PathBuf>,
-    /// Compile the generated `.tex` to PDF with xelatex (+ biber).
     #[arg(long)]
     compile: bool,
-    /// Stream xelatex/biber output to the console. Without this flag,
-    /// external tools run quietly; their captured output is printed
-    /// only if they fail.
     #[arg(short, long)]
     verbose: bool,
+    /// Worker threads for image processing and PlantUML rendering.
+    /// 0 = one per logical CPU (or $RAYON_NUM_THREADS).
+    #[arg(short = 'j', long, default_value_t = 0)]
+    jobs: usize,
+}
+
+fn init_thread_pool(jobs: usize) {
+    let n = if jobs > 0 {
+        Some(jobs)
+    } else {
+        std::env::var("RAYON_NUM_THREADS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+    };
+    if let Some(n) = n {
+        let _ = rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .thread_name(|i| format!("md2latex-{}", i))
+            .build_global();
+    }
 }
 
 fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
     let total_start = Instant::now();
     let cli = Cli::parse();
+    init_thread_pool(cli.jobs);
 
     log::header("md2latex-gost");
     let md_path = cli.input.clone();
@@ -82,7 +93,6 @@ fn main() -> Result<()> {
     let t = Instant::now();
     let out_dir = PathBuf::from(&cfg.project.output_dir);
     fs::create_dir_all(&out_dir)?;
-
     let md_prepared = images::prepare_images(
         &md_body,
         &md_path,
@@ -94,16 +104,21 @@ fn main() -> Result<()> {
     build::copy_bibliography(&cfg, &md_path, &out_dir).context("bibliography copy failed")?;
     let images_time = t.elapsed();
 
-    // ── PlantUML: подготовка JAR и рендерера ─────────────────────────────
-    let plantuml =
-        plantuml::PlantUml::new(&cfg, &out_dir).context("failed to initialise PlantUML")?;
-
+    // ── Parse once; warm the PlantUML cache in parallel ─────────────────
     let t = Instant::now();
     let md_dir = md_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
-    let body = markdown::markdown_to_latex(&md_prepared, &cfg, &md_dir, plantuml.as_ref())
+    let arena = comrak::Arena::new();
+    let root = markdown::parse(&arena, &md_prepared);
+    let sources = markdown::collect_plantuml_sources(root, &cfg, &md_dir);
+    let plantuml = plantuml::PlantUml::prepare(&cfg, &out_dir, &sources)
+        .context("failed to initialise PlantUML")?;
+    let puml_time = t.elapsed();
+
+    let t = Instant::now();
+    let body = markdown::render(root, &cfg, &md_dir, plantuml.as_ref())
         .context("Markdown conversion failed")?;
     let md_time = t.elapsed();
 
@@ -133,6 +148,7 @@ fn main() -> Result<()> {
         &cfg,
         config_time,
         images_time,
+        puml_time,
         md_time,
         render_time,
         write_time,

@@ -2,27 +2,46 @@
 
 use comrak::nodes::{AstNode, NodeValue};
 
+#[inline(always)]
+fn special(b: u8) -> Option<&'static str> {
+    match b {
+        b'&' => Some("\\&"),
+        b'%' => Some("\\%"),
+        b'$' => Some("\\$"),
+        b'#' => Some("\\#"),
+        b'_' => Some("\\_"),
+        b'{' => Some("\\{"),
+        b'}' => Some("\\}"),
+        b'~' => Some("\\textasciitilde{}"),
+        b'^' => Some("\\textasciicircum{}"),
+        b'\\' => Some("\\textbackslash{}"),
+        _ => None,
+    }
+}
+
+/// All special characters are ASCII, so byte indices are char boundaries.
 pub fn escape_latex(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("\\&"),
-            '%' => out.push_str("\\%"),
-            '$' => out.push_str("\\$"),
-            '#' => out.push_str("\\#"),
-            '_' => out.push_str("\\_"),
-            '{' => out.push_str("\\{"),
-            '}' => out.push_str("\\}"),
-            '~' => out.push_str("\\textasciitilde{}"),
-            '^' => out.push_str("\\textasciicircum{}"),
-            '\\' => out.push_str("\\textbackslash{}"),
-            _ => out.push(c),
+    let bytes = s.as_bytes();
+    if !bytes.iter().any(|&b| special(b).is_some()) {
+        return s.to_owned();
+    }
+    let mut out = String::with_capacity(s.len() + 16);
+    let mut run = 0usize;
+    for (i, &b) in bytes.iter().enumerate() {
+        if let Some(rep) = special(b) {
+            out.push_str(&s[run..i]);
+            out.push_str(rep);
+            run = i + 1;
         }
     }
+    out.push_str(&s[run..]);
     out
 }
 
 pub fn format_caption(s: &str) -> String {
+    if !s.contains('`') {
+        return escape_latex(s);
+    }
     let mut out = String::with_capacity(s.len());
     let mut buf = String::new();
     let mut in_code = false;

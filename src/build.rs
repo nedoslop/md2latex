@@ -62,6 +62,7 @@ pub(crate) fn print_timings(
     cfg: &config::Config,
     config_time: Duration,
     images_time: Duration,
+    puml_time: Duration,
     md_time: Duration,
     render_time: Duration,
     write_time: Duration,
@@ -71,6 +72,7 @@ pub(crate) fn print_timings(
     let mut rows: Vec<(String, Duration)> = vec![
         ("Config".to_string(), config_time),
         ("Images".to_string(), images_time),
+        ("PlantUML (batched)".to_string(), puml_time),
         ("Markdown → LaTeX".to_string(), md_time),
         ("Render .tex".to_string(), render_time),
         ("Write .tex".to_string(), write_time),
