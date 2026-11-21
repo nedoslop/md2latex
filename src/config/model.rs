@@ -91,6 +91,9 @@ pub struct Config {
     /// PlantUML rendering settings.
     #[serde(default)]
     pub plantuml: PlantUmlConfig,
+    /// LaTeX table-rendering knobs (wrapping, hyphenation, longtable).
+    #[serde(default)]
+    pub tables: Tables,
     #[serde(default = "default_extra")]
     pub extra: toml::Value,
 }
@@ -262,6 +265,50 @@ impl Default for Code {
             font_size: default_code_font_size(),
             line_numbers: false,
             frame: true,
+        }
+    }
+}
+
+// ── Tables ──────────────────────────────────────────────────────────────
+
+/// LaTeX table-rendering knobs.
+///
+/// По умолчанию все колонки — `>{\raggedright\arraybackslash}p{…}`
+/// (переносимые, с принудительным `\raggedright`), а внутри группы
+/// выставляется `\hyphenchar\font=45`, чтобы LaTeX вставлял обычный
+/// ASCII-дефис, а не символ, отсутствующий в шрифте.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct Tables {
+    /// Использовать `longtable` (перенос на несколько страниц).
+    /// Если `false` — рендерим через `tabular` (без разрывов).
+    pub use_longtable: bool,
+    /// Использовать `tabularx` с `X`-колонками (ширина `\textwidth`).
+    /// Если `false` — `p{…}` с расчётной шириной на колонку.
+    pub use_tabularx: bool,
+    /// `\raggedright` в ячейках (вместо `\centering`/`\raggedleft`).
+    /// Выключение возвращает выравнивание по разметке markdown-таблицы.
+    pub ragged_right: bool,
+    /// Принудительно выставлять `\hyphenchar\font=45` внутри таблицы.
+    /// Должно быть включено, если в таблице встречаются длинные слова
+    /// или дефисные переносы (иначе можно получить `□`).
+    pub fix_hyphenchar: bool,
+    /// Отношение суммарной ширины колонок к `\textwidth` (0.0–1.0).
+    pub width_ratio: f64,
+}
+
+fn default_table_width_ratio() -> f64 {
+    0.95
+}
+
+impl Default for Tables {
+    fn default() -> Self {
+        Self {
+            use_longtable: true,
+            use_tabularx: false,
+            ragged_right: true,
+            fix_hyphenchar: true,
+            width_ratio: default_table_width_ratio(),
         }
     }
 }
@@ -596,192 +643,4 @@ impl Default for Links {
 #[derive(Debug, Deserialize)]
 pub struct Images {
     #[serde(default = "default_true")]
-    pub interpolate: bool,
-    #[serde(default)]
-    pub convert_to: Option<String>,
-    #[serde(default = "default_dpi")]
-    pub dpi: u32,
-}
-
-fn default_dpi() -> u32 {
-    300
-}
-
-impl Default for Images {
-    fn default() -> Self {
-        Self {
-            interpolate: true,
-            convert_to: None,
-            dpi: 300,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Lists {
-    #[serde(default = "default_itemize_label")]
-    pub itemize_label: String,
-    #[serde(default = "default_enumerate_label")]
-    pub enumerate_label: String,
-    #[serde(default = "default_bibliography_label")]
-    pub bibliography_label: String,
-}
-
-fn default_itemize_label() -> String {
-    "\\textendash".into()
-}
-fn default_enumerate_label() -> String {
-    "\\arabic*)".into()
-}
-fn default_bibliography_label() -> String {
-    "\\arabic*.".into()
-}
-
-impl Default for Lists {
-    fn default() -> Self {
-        Self {
-            itemize_label: default_itemize_label(),
-            enumerate_label: default_enumerate_label(),
-            bibliography_label: default_bibliography_label(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Templates {
-    #[serde(default = "default_templates_dir")]
-    pub dir: String,
-    #[serde(default = "default_base_template")]
-    pub base: String,
-    #[serde(default = "default_title_template")]
-    pub title: String,
-}
-
-fn default_templates_dir() -> String {
-    String::new()
-}
-fn default_base_template() -> String {
-    "base.tex.tera".into()
-}
-fn default_title_template() -> String {
-    "title.tex.tera".into()
-}
-
-impl Default for Templates {
-    fn default() -> Self {
-        Self {
-            dir: default_templates_dir(),
-            base: default_base_template(),
-            title: default_title_template(),
-        }
-    }
-}
-
-impl Templates {
-    pub fn dir_path(&self) -> PathBuf {
-        PathBuf::from(&self.dir)
-    }
-    pub fn base_path(&self) -> PathBuf {
-        self.dir_path().join(&self.base)
-    }
-    pub fn title_path(&self) -> PathBuf {
-        self.dir_path().join(&self.title)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Toc {
-    #[serde(default = "default_true")]
-    pub clickable_dots: bool,
-}
-
-impl Default for Toc {
-    fn default() -> Self {
-        Self {
-            clickable_dots: true,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LineBreaking {
-    #[serde(default = "default_hyphen_penalty")]
-    pub hyphen_penalty: i32,
-    #[serde(default = "default_exhyphen_penalty")]
-    pub exhyphen_penalty: i32,
-    #[serde(default = "default_true")]
-    pub sloppy: bool,
-    #[serde(default = "default_emergencystretch")]
-    pub emergencystretch: String,
-    #[serde(default = "default_tolerance")]
-    pub tolerance: i32,
-    #[serde(default = "default_hbadness")]
-    pub hbadness: i32,
-}
-
-fn default_hyphen_penalty() -> i32 {
-    50
-}
-fn default_exhyphen_penalty() -> i32 {
-    50
-}
-fn default_emergencystretch() -> String {
-    "2em".into()
-}
-fn default_tolerance() -> i32 {
-    9999
-}
-fn default_hbadness() -> i32 {
-    10000
-}
-
-impl Default for LineBreaking {
-    fn default() -> Self {
-        Self {
-            hyphen_penalty: 50,
-            exhyphen_penalty: 50,
-            sloppy: true,
-            emergencystretch: "2em".into(),
-            tolerance: 9999,
-            hbadness: 10000,
-        }
-    }
-}
-
-// ── Helpers for case conversion ─────────────────────────────────────────
-
-fn to_title_case(s: &str) -> String {
-    s.split_whitespace()
-        .map(|w| {
-            let mut c = w.chars();
-            match c.next() {
-                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn to_sentence_case(s: &str) -> String {
-    let lower = s.to_lowercase();
-    let mut result = String::with_capacity(lower.len());
-    let mut first_alpha_done = false;
-    for c in lower.chars() {
-        if !first_alpha_done && c.is_alphabetic() {
-            result.extend(c.to_uppercase());
-            first_alpha_done = true;
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
-
-fn to_title_case_if_upper(s: &str) -> String {
-    if s.chars().all(|c| !c.is_lowercase()) {
-        to_title_case(s)
-    } else {
-        s.to_string()
-    }
-}
+    pub interpolate: bool

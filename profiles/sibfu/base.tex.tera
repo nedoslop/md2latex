@@ -240,7 +240,7 @@
 
 % Allow hyphenation inside compound words (e.g. LaTeX-document).
 \lccode`\-=`\-
-\defaulthyphenchar=127
+\defaulthyphenchar=45
 
 % Bibliography list (1., 2., 3.).
 \newlist{stubiblist}{enumerate}{1}
