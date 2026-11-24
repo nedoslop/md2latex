@@ -234,7 +234,7 @@ fn emit_cell(cell: &Cell, is_first: bool) -> String {
     let inner = if cell.phantom {
         String::new()
     } else if cell.rowspan > 1 {
-        format!("\\multirow{{{}}}{{*}}{{{}}}", cell.rowspan, cell.content)
+        format!("\\multirow{{{}}}{{=}}{{{}}}", cell.rowspan, cell.content)
     } else {
         cell.content.clone()
     };

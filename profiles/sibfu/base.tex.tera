@@ -14,6 +14,7 @@
 \setdefaultlanguage{ {{- language -}} }
 \setotherlanguage{ {{- other_language -}} }
 \usepackage{fontspec}
+\defaultfontfeatures{HyphenChar=-}
 
 \IfFontExistsTF{ {{- main_font | trim -}} }{
   \setmainfont[Ligatures=TeX]{ {{- main_font | trim -}} }
@@ -240,7 +241,7 @@
 
 % Allow hyphenation inside compound words (e.g. LaTeX-document).
 \lccode`\-=`\-
-\defaulthyphenchar=45
+\defaulthyphenchar=`\-
 
 % Bibliography list (1., 2., 3.).
 \newlist{stubiblist}{enumerate}{1}
