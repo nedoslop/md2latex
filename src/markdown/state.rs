@@ -12,11 +12,19 @@ pub(crate) enum Ctx {
     Appendix,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ColWidth {
+    Percent(f64),
+    Parts(f64),
+    Auto,
+}
+
 pub(crate) struct PendingTableCaption {
     pub(crate) label: Option<String>,
     pub(crate) caption: String,
     pub(crate) breakable: bool,
     pub(crate) new_page: bool,
+    pub(crate) widths: Option<Vec<ColWidth>>,
 }
 
 pub(crate) struct RenderState<'a> {

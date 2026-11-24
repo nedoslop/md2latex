@@ -262,12 +262,13 @@ fn render_paragraph<'a>(
 ) -> Result<()> {
     let raw_text = extract_text(node).trim().to_string();
     if let Some(after) = raw_text.strip_prefix("#tbl:") {
-        let (label, caption, breakable, new_page) = parse_table_meta(after);
+        let (label, caption, breakable, new_page, widths) = parse_table_meta(after);
         state.pending_table = Some(PendingTableCaption {
             label,
             caption,
             breakable,
             new_page,
+            widths,
         });
         return Ok(());
     }

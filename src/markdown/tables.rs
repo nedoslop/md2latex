@@ -8,7 +8,7 @@ use comrak::nodes::{AstNode, NodeValue, TableAlignment};
 use std::collections::HashMap;
 
 use super::inline::render_inline;
-use super::state::{PendingTableCaption, RenderState};
+use super::state::{ColWidth, PendingTableCaption, RenderState};
 use super::util::{compute_baseline, escape_latex, extract_text, format_caption};
 
 /// Incremental replacement for the old O(rows²) `active_columns_at_hline`.
@@ -70,13 +70,22 @@ struct Cell {
 
 type Row = Vec<Cell>;
 
-pub(crate) fn parse_table_meta(after: &str) -> (Option<String>, String, bool, bool) {
+pub(crate) fn parse_table_meta(
+    after: &str,
+) -> (Option<String>, String, bool, bool, Option<Vec<ColWidth>>) {
     let mut label = None;
     let mut caption_tokens = Vec::new();
     let mut breakable = true;
     let mut new_page = false;
+    let mut widths = None;
     for token in after.split_whitespace() {
-        if label.is_none() && !token.contains('=') && token != "breakable" && token != "new_page" {
+        if let Some(w) = token.strip_prefix("widths=") {
+            widths = Some(parse_widths(w));
+        } else if label.is_none()
+            && !token.contains('=')
+            && token != "breakable"
+            && token != "new_page"
+        {
             label = Some(format!("tbl:{}", token));
         } else if token == "breakable=false" || token == "breakable=0" {
             breakable = false;
@@ -90,7 +99,106 @@ pub(crate) fn parse_table_meta(after: &str) -> (Option<String>, String, bool, bo
             caption_tokens.push(token);
         }
     }
-    (label, caption_tokens.join(" "), breakable, new_page)
+    (label, caption_tokens.join(" "), breakable, new_page, widths)
+}
+
+fn parse_widths(s: &str) -> Vec<ColWidth> {
+    s.split(',')
+        .map(|raw| {
+            let t = raw.trim();
+            if t.is_empty() {
+                return ColWidth::Auto;
+            }
+            if let Some(p) = t.strip_suffix('%') {
+                match p.trim().parse::<f64>() {
+                    Ok(v) if v.is_finite() && v > 0.0 => ColWidth::Percent(v),
+                    _ => {
+                        log::warn(&format!("invalid column width '{}' — treated as auto", t));
+                        ColWidth::Auto
+                    }
+                }
+            } else {
+                match t.parse::<f64>() {
+                    Ok(v) if v.is_finite() && v > 0.0 => ColWidth::Parts(v),
+                    _ => {
+                        log::warn(&format!("invalid column width '{}' — treated as auto", t));
+                        ColWidth::Auto
+                    }
+                }
+            }
+        })
+        .collect()
+}
+
+/// Per-column `\hsize` multipliers for tabularx. They always sum to `ncols`.
+fn compute_multipliers(widths: Option<&[ColWidth]>, ncols: usize) -> Vec<f64> {
+    let Some(entries) = widths else {
+        return vec![1.0; ncols];
+    };
+    if entries.len() != ncols {
+        log::warn(&format!(
+            "widths= has {} entries but the table has {} columns; padding/truncating",
+            entries.len(),
+            ncols
+        ));
+    }
+    let get = |i: usize| entries.get(i).copied().unwrap_or(ColWidth::Auto);
+    let mut weights = vec![0.0f64; ncols];
+    let has_percent = (0..ncols).any(|i| matches!(get(i), ColWidth::Percent(_)));
+
+    if has_percent {
+        let pct_sum: f64 = (0..ncols)
+            .filter_map(|i| match get(i) {
+                ColWidth::Percent(p) => Some(p),
+                _ => None,
+            })
+            .sum();
+        if pct_sum > 100.0 {
+            log::warn("widths= percentages exceed 100%; renormalising");
+        }
+        let remaining = (100.0 - pct_sum).max(0.0);
+        let other_sum: f64 = (0..ncols)
+            .map(|i| match get(i) {
+                ColWidth::Parts(v) => v,
+                ColWidth::Auto => 1.0,
+                _ => 0.0,
+            })
+            .sum();
+        for i in 0..ncols {
+            weights[i] = match get(i) {
+                ColWidth::Percent(p) => p,
+                ColWidth::Parts(v) => {
+                    if other_sum > 0.0 {
+                        remaining * v / other_sum
+                    } else {
+                        0.0
+                    }
+                }
+                ColWidth::Auto => {
+                    if other_sum > 0.0 {
+                        remaining / other_sum
+                    } else {
+                        0.0
+                    }
+                }
+            };
+        }
+    } else {
+        for i in 0..ncols {
+            weights[i] = match get(i) {
+                ColWidth::Parts(v) => v,
+                _ => 1.0,
+            };
+        }
+    }
+
+    if weights.iter().any(|w| *w <= 0.0) {
+        log::warn("widths= leaves no room for some columns; falling back to equal widths");
+        return vec![1.0; ncols];
+    }
+    let total: f64 = weights.iter().sum();
+    let scale = ncols as f64 / total;
+    weights.iter().map(|w| w * scale).collect()
 }
 
 fn alignment_cmd(align: TableAlignment) -> &'static str {
@@ -214,20 +322,20 @@ fn fold_rowspans(rows: &mut Vec<Row>) {
     }
 }
 
-fn multicolumn_spec(n: usize, align_cmd: &str) -> String {
+fn multicolumn_spec(span_sum: f64, n: usize, align_cmd: &str) -> String {
     let ts = (n - 1) * 2;
     let rw = n - 1;
     format!(
-        ">{{\\hsize=\\dimexpr {n}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\
-         {algn}\\arraybackslash\\leavevmode}}X",
-        n = n,
+        ">{{\\hsize=\\dimexpr {span:.4}\\hsize + {ts}\\tabcolsep + {rw}\\arrayrulewidth\\relax\
+{algn}\\arraybackslash\\leavevmode}}X",
+        span = span_sum,
         ts = ts,
         rw = rw,
         algn = align_cmd,
     )
 }
 
-fn emit_cell(cell: &Cell, is_first: bool) -> String {
+fn emit_cell(cell: &Cell, is_first: bool, span_sum: f64) -> String {
     if cell.phantom && cell.colspan == 1 {
         return String::new();
     }
@@ -239,7 +347,7 @@ fn emit_cell(cell: &Cell, is_first: bool) -> String {
         cell.content.clone()
     };
     if cell.colspan > 1 {
-        let colspec = multicolumn_spec(cell.colspan, alignment_cmd(cell.align));
+        let colspec = multicolumn_spec(span_sum, cell.colspan, alignment_cmd(cell.align));
         let spec = if is_first {
             format!("|{}|", colspec)
         } else {
@@ -251,15 +359,18 @@ fn emit_cell(cell: &Cell, is_first: bool) -> String {
     }
 }
 
-fn emit_row(row: &Row) -> String {
+fn emit_row(row: &Row, mults: &[f64]) -> String {
     let mut parts: Vec<String> = Vec::with_capacity(row.len());
+    let mut col = 0usize;
     for (i, cell) in row.iter().enumerate() {
-        parts.push(emit_cell(cell, i == 0));
+        let span_sum: f64 = mults.iter().skip(col).take(cell.colspan).sum();
+        parts.push(emit_cell(cell, i == 0, span_sum));
+        col += cell.colspan;
     }
     parts.join(" & ")
 }
 
-fn emit_header_row(row: &Row) -> String {
+fn emit_header_row(row: &Row, mults: &[f64]) -> String {
     let bold: Row = row
         .iter()
         .map(|c| Cell {
@@ -274,7 +385,7 @@ fn emit_header_row(row: &Row) -> String {
             align: c.align,
         })
         .collect();
-    emit_row(&bold)
+    emit_row(&bold, mults)
 }
 
 fn emit_trailing_rule(out: &mut String, ranges: &[(usize, usize)], ncols: usize) {
@@ -324,14 +435,15 @@ pub(crate) fn render_table<'a>(
     let ncols = raw_rows[0].len().max(1);
     let baseline = compute_baseline(&cfg.style.table_font_size);
     let double_rule = format!("\\hhline{{|{}|}}", "=".repeat(ncols));
-    let (caption_latex, label_latex, breakable, new_page) = match meta {
+    let (caption_latex, label_latex, breakable, new_page, widths) = match meta {
         Some(m) => (
             format_caption(m.caption.trim_end_matches('.')),
             m.label.unwrap_or_default(),
             m.breakable,
             m.new_page,
+            m.widths,
         ),
-        None => (String::new(), String::new(), true, false),
+        None => (String::new(), String::new(), true, false, None),
     };
     let mut processed: Vec<Row> = raw_rows
         .iter()
@@ -350,14 +462,29 @@ pub(crate) fn render_table<'a>(
             c.rowspan = 1;
         }
     }
-    let col_spec: String = (0..ncols)
-        .map(|i| match alignments.get(i) {
-            Some(TableAlignment::Left) => "L",
-            Some(TableAlignment::Right) => "R",
-            _ => "C",
-        })
-        .collect::<Vec<_>>()
-        .join("|");
+    let mults = compute_multipliers(widths.as_deref(), ncols);
+    let col_spec: String = if widths.is_some() {
+        (0..ncols)
+            .map(|i| {
+                let algn =
+                    alignment_cmd(alignments.get(i).copied().unwrap_or(TableAlignment::Center));
+                format!(
+                    ">{{\\hsize={:.4}\\hsize {}\\arraybackslash}}X",
+                    mults[i], algn
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("|")
+    } else {
+        (0..ncols)
+            .map(|i| match alignments.get(i) {
+                Some(TableAlignment::Left) => "L",
+                Some(TableAlignment::Right) => "R",
+                _ => "C",
+            })
+            .collect::<Vec<_>>()
+            .join("|")
+    };
     if breakable {
         if new_page {
             out.push_str("\\clearpage\n");
@@ -388,7 +515,7 @@ pub(crate) fn render_table<'a>(
         if !cap_line.is_empty() {
             out.push_str(&format!("  {} \\\\\n", cap_line));
         }
-        let header = emit_header_row(&processed[0]);
+        let header = emit_header_row(&processed[0], &mults);
         out.push_str("  \\hline\n");
         out.push_str(&header);
         out.push_str(&format!(" \\\\\n{}\n\\endfirsthead\n", double_rule));
@@ -414,7 +541,7 @@ pub(crate) fn render_table<'a>(
                 }
             }
             out.push_str("  ");
-            out.push_str(&emit_row(&row_data));
+            out.push_str(&emit_row(&row_data, &mults));
             emit_trailing_rule(out, &tracker.free_ranges(source_row), ncols);
         }
         out.push_str("  \\end{xltabular}\n  }\n\n");
@@ -435,11 +562,11 @@ pub(crate) fn render_table<'a>(
         out.push_str("  \\begin{tabularx}{\\textwidth}{|");
         out.push_str(&col_spec);
         out.push_str("|}\n\\hline\n");
-        out.push_str(&emit_header_row(&processed[0]));
+        out.push_str(&emit_header_row(&processed[0], &mults));
         out.push_str(" \\\\\n\\hline\n");
         for row in processed.iter().skip(1) {
             out.push_str("  ");
-            out.push_str(&emit_row(row));
+            out.push_str(&emit_row(row, &mults));
             out.push_str(" \\\\\n\\hline\n");
         }
         out.push_str("  \\end{tabularx}\n}\n");
