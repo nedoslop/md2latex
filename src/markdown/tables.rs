@@ -434,7 +434,8 @@ pub(crate) fn render_table<'a>(
     }
     let ncols = raw_rows[0].len().max(1);
     let baseline = compute_baseline(&cfg.style.table_font_size);
-    let double_rule = format!("\\hhline{{|{}|}}", "=".repeat(ncols));
+    let double_rule = format!("\\hhline{{|{}|}}", vec!["="; ncols].join("|"));
+
     let (caption_latex, label_latex, breakable, new_page, widths) = match meta {
         Some(m) => (
             format_caption(m.caption.trim_end_matches('.')),
